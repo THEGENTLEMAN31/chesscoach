@@ -29,6 +29,13 @@ async def list_games(
     return [dict(r) for r in await cur.fetchall()]
 
 
+def _side_cp(cp: float | None, side: str) -> float | None:
+    """cp moteur (du point de vue du trait) -> point de vue du côté `side`."""
+    if cp is None:
+        return None
+    return cp if side == "w" else -cp
+
+
 async def review_game(db: aiosqlite.Connection, game_id: int) -> dict | None:
     game = await get_game(db, game_id)
     if not game:
@@ -69,8 +76,12 @@ async def review_game(db: aiosqlite.Connection, game_id: int) -> dict | None:
             {
                 "move_number": p["move_number"], "san": p["san"],
                 "classification": p["classification"],
-                "loss": p["winprob_loss"], "eval_before_cp": p["eval_before_cp"],
-                "eval_after_cp": p["eval_after_cp"],
+                "loss": p["winprob_loss"],
+                # cp normalisé du point de vue du camp qui a joué le coup
+                # (positif = mieux pour lui). ev_before = trait = color,
+                # ev_after = trait adverse.
+                "eval_before_cp": _side_cp(p["eval_before_cp"], p["color"]),
+                "eval_after_cp": _side_cp(p["eval_after_cp"], "b" if p["color"] == "w" else "w"),
                 "best_move_san": p["best_move_san"],
                 "phase": p["phase"], "time_taken": p["time_taken"],
                 "fen_before": p["fen_before"],

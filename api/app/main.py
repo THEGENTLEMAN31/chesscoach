@@ -174,14 +174,28 @@ async def get_game(game_id: int) -> GameDetailOut:
            FROM plies WHERE game_id=? ORDER BY ply""", (game_id,)
     )
     for p in await cur.fetchall():
+        # Le moteur exprime cp/mat du point de vue du camp au trait : on
+        # normalise côté Blancs pour l'affichage (ev_before = trait du coup,
+        # ev_after = trait adverse).
+        stm_b = "w" if p["ply"] % 2 == 0 else "b"
+        stm_a = "b" if stm_b == "w" else "w"
+
+        def _white_side(score, mate, stm):
+            cp = score
+            if cp is not None:
+                cp = cp if stm == "w" else -cp
+            if mate is not None:
+                mate = mate if stm == "w" else -mate
+            return {"cp": cp, "mate": mate}
+
         plies.append({
             "ply": p["ply"],
             "san": p["san"],
             "uci": p["uci"],
             "fen_before": p["fen_before"],
             "fen_after": p["fen_after"],
-            "eval_before": {"cp": p["eval_before_cp"], "mate": p["mate_before"]},
-            "eval_after": {"cp": p["eval_after_cp"], "mate": p["mate_after"]},
+            "eval_before": _white_side(p["eval_before_cp"], p["mate_before"], stm_b),
+            "eval_after": _white_side(p["eval_after_cp"], p["mate_after"], stm_a),
             "best_move": p["best_move_uci"],
             "best_move_san": p["best_move_san"],
             "cp_loss": p["cp_loss"],

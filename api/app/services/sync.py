@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime, timezone
 
 import aiosqlite
@@ -30,6 +31,13 @@ TIME_CLASSES = {"rapid", "blitz"}
 
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _chesscom_game_id(raw: dict) -> int | None:
+    """L'API chess.com n'expose pas d'`id` : on l'extrait de l'URL."""
+    url = raw.get("url") or ""
+    m = re.search(r"/(\d+)(?:\?|$)", url)
+    return int(m.group(1)) if m else None
 
 
 def phase_of(board: chess.Board, ply: int) -> str:
@@ -140,7 +148,7 @@ class SyncPipeline:
         opening = self.book.classify_fens(fen_list) if self.book._loaded else None
 
         row = await self.db.execute(
-            "SELECT id FROM games WHERE chesscom_id=?", (raw.get("id"),)
+            "SELECT id FROM games WHERE pgn=? AND username=?", (pgn, username)
         )
         if await row.fetchone():
             return False
@@ -151,7 +159,7 @@ class SyncPipeline:
                eco, opening_name, termination, pgn, status)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'synced')""",
             (
-                raw.get("id"),
+                _chesscom_game_id(raw),
                 username,
                 white_name,
                 black_name,
@@ -250,8 +258,17 @@ class SyncPipeline:
 
             if is_book:
                 classification = "book"
+                stm_b = m.color
+                wp_b = eval_mod.win_prob(ev_before, stm_b, m.color)
+                wp_a = wp_b
             else:
-                classification, wp_b, wp_a, loss = eval_mod.classify(ev_before, ev_after, m.color)
+                stm_b = m.color
+                stm_a = "w" if m.color == "b" else "b"
+                wp_b = eval_mod.win_prob(ev_before, stm_b, m.color)
+                wp_a = wp_b if not eval_mod.has_score(ev_after) else eval_mod.win_prob(ev_after, stm_a, m.color)
+                classification, wp_b, wp_a, loss = eval_mod.classify(
+                    ev_before, ev_after, m.color, wp_before=wp_b, wp_after=wp_a
+                )
                 counts[classification] = counts.get(classification, 0) + 1
                 if m.color == player_color:
                     scores.append(eval_mod.MOVE_SCORE[classification])
@@ -260,10 +277,16 @@ class SyncPipeline:
             best_move_uci = before.get("bestmove")
             best_move_san = self._to_san(fen_list[k], best_move_uci) if best_move_uci else None
 
-            # cp_loss exprimé du point de vue du trait (cp toujours côté Blancs)
+            # cp_loss : perte en centipawns du point de vue du trait (positif = perte).
+            # Le moteur exprime cp du point de vue du camp au trait : pour le coup k,
+            # ev_before a pour trait m.color, ev_after a pour trait l'adversaire.
             cp_loss = None
             if ev_before.cp is not None and ev_after.cp is not None:
-                cp_loss = round(ev_before.cp - ev_after.cp, 1)
+                # ev_before a pour trait m.color : cp déjà du point de vue du trait.
+                before_side = ev_before.cp
+                # ev_after a pour trait l'adversaire.
+                after_side = -ev_after.cp if m.color == "w" else ev_after.cp
+                cp_loss = round(before_side - after_side, 1)
 
             await self.db.execute(
                 """INSERT OR REPLACE INTO plies
@@ -280,9 +303,9 @@ class SyncPipeline:
                     best_move_uci, best_move_san,
                     json.dumps((before.get("lines") or [{}])[0].get("pv", [])) if before.get("lines") else None,
                     cp_loss,
-                    round(eval_mod.win_prob(ev_before, m.color), 2),
-                    round(eval_mod.win_prob(ev_after, m.color), 2),
-                    round(eval_mod.win_prob(ev_before, m.color) - eval_mod.win_prob(ev_after, m.color), 2),
+                    round(wp_b, 2),
+                    round(wp_a, 2),
+                    round(wp_b - wp_a, 2),
                     classification,
                     m.clk, m.time_taken, phase_of(board, m.ply),
                     1 if is_book else 0,
