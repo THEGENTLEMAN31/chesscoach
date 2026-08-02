@@ -15,7 +15,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -103,6 +103,35 @@ MIGRATIONS: dict[int, str] = {
         games_analyzed INTEGER DEFAULT 0,
         status        TEXT NOT NULL DEFAULT 'running',  -- running / done / error
         error         TEXT
+    );
+    """,
+    2: """
+    CREATE TABLE IF NOT EXISTS coach_memory (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind        TEXT NOT NULL,          -- profile / prescription / diagnostic / feedback / note
+        content     TEXT NOT NULL,
+        source      TEXT,                   -- user / agent / digest
+        created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS llm_usage (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        day        TEXT NOT NULL,           -- YYYY-MM-DD
+        model      TEXT NOT NULL,
+        tokens_in  INTEGER DEFAULT 0,
+        tokens_out INTEGER DEFAULT 0,
+        calls      INTEGER DEFAULT 0,
+        UNIQUE(day, model)
+    );
+
+    CREATE TABLE IF NOT EXISTS digests (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        period     TEXT NOT NULL,           -- YYYY-MM-DD
+        facts      TEXT,                    -- json structuré (déterministe)
+        narrative  TEXT,                    -- narration FR (LLM ou template)
+        status     TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     """,
 }

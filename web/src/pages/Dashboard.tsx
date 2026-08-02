@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Stats } from "../types";
 import { api, timeClassLabel } from "../api";
 import { CLASS_LABEL, CLASS_COLOR } from "../constants";
+import Markdown from "../components/Markdown";
 import {
   Bar,
   BarChart,
@@ -15,15 +16,27 @@ import {
   YAxis,
 } from "recharts";
 
+interface Digest {
+  period: string | null;
+  facts: Record<string, unknown> | null;
+  narrative: string | null;
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [status, setStatus] = useState<Awaited<ReturnType<typeof api.syncStatus>> | null>(null);
+  const [digest, setDigest] = useState<Digest | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [genDigest, setGenDigest] = useState(false);
 
   const load = () => {
     api.stats().then(setStats).catch((e) => setErr(String(e)));
     api.syncStatus().then(setStatus).catch(() => {});
+    fetch("/api/digest/latest")
+      .then((r) => r.json())
+      .then(setDigest)
+      .catch(() => {});
   };
 
   useEffect(load, []);
@@ -35,6 +48,18 @@ export default function Dashboard() {
       load();
       setSyncing(false);
     }, 2000);
+  };
+
+  const generateDigest = async () => {
+    setGenDigest(true);
+    try {
+      const res = await fetch("/api/digest/generate", { method: "POST" });
+      const d = (await res.json()) as Digest;
+      setDigest(d);
+    } catch (e) {
+      console.error(e);
+    }
+    setGenDigest(false);
   };
 
   if (err) return <div className="card">Erreur : {err}</div>;
@@ -138,6 +163,22 @@ export default function Dashboard() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="card digest-card">
+        <div className="digest-head">
+          <h3>Digest de la semaine</h3>
+          <button onClick={generateDigest} disabled={genDigest}>
+            {genDigest ? "…" : digest?.period ? "Régénérer" : "Générer"}
+          </button>
+        </div>
+        {digest?.narrative ? (
+          <Markdown text={digest.narrative} />
+        ) : (
+          <p className="muted">
+            Le digest est généré la nuit par un agent LLM avec accès à tes stats. Tu peux aussi le générer à la demande.
+          </p>
+        )}
       </div>
     </div>
   );

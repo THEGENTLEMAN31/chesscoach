@@ -331,3 +331,34 @@ button:disabled {
   font-size: 0.65rem;
   color: #475569;
 }
+
+/* Chat */
+.coach-page { max-width: 760px; }
+.chat { display: flex; flex-direction: column; height: 62vh; border: 1px solid #1e293b; border-radius: 12px; overflow: hidden; background: #0b1120; }
+.chat-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.chat-empty { color: #475569; font-style: italic; padding: 12px 4px; }
+.chat-warn { background: #3b2f00; color: #fbbf24; padding: 8px 12px; border-radius: 8px; font-size: 0.85rem; }
+.msg { max-width: 88%; padding: 10px 14px; border-radius: 14px; line-height: 1.5; font-size: 0.92rem; }
+.msg.user { align-self: flex-end; background: #1d4ed8; color: #fff; border-bottom-right-radius: 4px; }
+.msg.assistant { align-self: flex-start; background: #1e293b; border: 1px solid #334155; border-bottom-left-radius: 4px; }
+.msg-error { border-color: #b91c1c; }
+.dots { animation: blink 1s infinite; }
+@keyframes blink { 0%,100% { opacity: 0.2; } 50% { opacity: 1; } }
+.chat-input { display: flex; gap: 8px; padding: 10px; border-top: 1px solid #1e293b; }
+.chat-input input { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; }
+.chat-input button { padding: 10px 16px; border-radius: 8px; border: none; background: #1d4ed8; color: #fff; cursor: pointer; }
+.chat-input button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Markdown */
+.md p { margin: 6px 0; }
+.md h3 { margin: 12px 0 4px; color: #38bdf8; font-size: 1rem; }
+.md h4 { margin: 10px 0 4px; color: #7dd3fc; font-size: 0.92rem; }
+.md ul { margin: 6px 0; padding-left: 20px; }
+.md li { margin: 2px 0; }
+.md-code { background: #0f172a; border: 1px solid #334155; border-radius: 4px; padding: 1px 5px; font-size: 0.85em; font-family: ui-monospace, monospace; }
+
+/* Digest */
+.digest-head { display: flex; justify-content: space-between; align-items: center; }
+.digest-head button { padding: 6px 12px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; cursor: pointer; }
+.digest-head button:disabled { opacity: 0.5; }
+.digest-card .md p { font-size: 0.95rem; }

@@ -6,3 +6,7 @@ python-chess
 aiosqlite
 httpx
 sse-starlette
+langgraph
+langgraph-checkpoint-sqlite
+langchain-core
+langchain-openai

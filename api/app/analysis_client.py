@@ -26,3 +26,18 @@ class AnalyzerClient:
         r = await self._client.post("/games/analyze", json=payload)
         r.raise_for_status()
         return r.json()
+
+    async def analyze_position(
+        self, fen: str, depth: int = 20, movetime: int = 3000, multipv: int = 1
+    ) -> dict:
+        payload = {"fen": fen, "config": {"depth": depth, "movetime": movetime, "multipv": multipv}}
+        r = await self._client.post("/positions/analyze", json=payload)
+        r.raise_for_status()
+        return r.json()
+
+    async def analyze_line(self, fen: str, ucis: list[str], depth: int = 20, movetime: int = 3000) -> dict:
+        payload = {"fen": fen, "ucis": ucis,
+                   "config": {"depth": depth, "movetime": movetime, "multipv": 1}}
+        r = await self._client.post("/lines/analyze", json=payload)
+        r.raise_for_status()
+        return r.json()

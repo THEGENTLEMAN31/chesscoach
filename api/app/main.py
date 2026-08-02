@@ -10,7 +10,10 @@ import json
 import logging
 from contextlib import asynccontextmanager
 
+import aiosqlite
 from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
 
 from .analysis_client import AnalyzerClient
 from .chesscom import ChessComClient
@@ -24,6 +27,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+class ChatRequest(BaseModel):
+    message: str
+    thread_id: str = "default"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.db = await init_db(settings.db_dir / "chesscoach.db")
@@ -35,7 +43,57 @@ async def lifespan(app: FastAPI):
         app.state.db, app.state.chesscom, app.state.analyzer, app.state.book
     )
     logger.info("API prête (book=%s positions)", len(app.state.book._by_epd))
+
+    # --- agent LLM (facultatif, mesure le quota réel au démarrage) ---
+    app.state.agent = None
+    app.state.quota = {"enabled": False}
+    app.state.nightly_task = None
+    if settings.llm_enabled and settings.openrouter_key:
+        from .agent.graph import ChessCoachAgent
+        from .agent.quota import probe_quota
+        from .agent.tools import AgentContext
+
+        memory_db = await aiosqlite.connect(str(settings.db_dir / "chesscoach.db"))
+        memory_db.row_factory = aiosqlite.Row
+        app.state.memory_db = memory_db
+
+        quota = await probe_quota(settings.openrouter_key, settings.openrouter_base_url)
+        app.state.quota = quota
+        logger.info("Quota OpenRouter mesuré : %s", quota)
+
+        ctx = AgentContext(db=app.state.db, analyzer=app.state.analyzer,
+                           chesscom=app.state.chesscom,
+                           username=settings.coach_username,
+                           sync_manager=app.state.manager)
+        app.state.agent = ChessCoachAgent(ctx, memory_db)
+
+        async def nightly_loop():
+            from .agent.digest import generate_digest
+
+            while True:
+                try:
+                    cur = await app.state.db.execute(
+                        "SELECT COUNT(*) AS n FROM digests WHERE period=date('now') AND status='done'"
+                    )
+                    row = await cur.fetchone()
+                    if not row or not row["n"]:
+                        await generate_digest(app.state.db, settings.coach_username,
+                                              model=app.state.agent._model)
+                        logger.info("Digest du jour généré")
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Digest échoué : %s", exc)
+                await asyncio.sleep(3600)
+
+        app.state.nightly_task = asyncio.create_task(nightly_loop())
+        logger.info("Agent LLM activé (modèle=%s)", settings.openrouter_model)
+    else:
+        logger.info("Agent LLM désactivé (LLM_ENABLED=%s)", settings.llm_enabled)
+
     yield
+    if app.state.nightly_task:
+        app.state.nightly_task.cancel()
+    if getattr(app.state, "memory_db", None):
+        await app.state.memory_db.close()
     await app.state.analyzer.aclose()
     await app.state.chesscom.aclose()
     await app.state.db.close()
@@ -202,6 +260,75 @@ async def players() -> list[dict]:
         "SELECT username, is_active, last_analyzed_at FROM players ORDER BY last_analyzed_at DESC"
     )
     return [dict(r) for r in await cur.fetchall()]
+
+
+# --------------------------------------------------------------- chat
+@app.get("/api/chat/status")
+async def chat_status() -> dict:
+    from .agent.quota import usage_today
+
+    enabled = app.state.agent is not None
+    usage = await usage_today(_db()) if enabled else None
+    return {"enabled": enabled, "model": settings.openrouter_model,
+            "quota": app.state.quota, "usage": usage}
+
+
+@app.post("/api/chat")
+async def chat(req: ChatRequest):
+    if not req.message.strip():
+        raise HTTPException(400, "message vide")
+    agent = app.state.agent
+    if agent is None:
+        return {"text": (
+            "Le coach LLM n'est pas activé (LLM_ENABLED=false). "
+            "Vous pouvez quand même consulter le tableau de bord et la revue de parties."
+        )}
+
+    from .agent.quota import usage_today
+
+    usage = await usage_today(_db())
+    if not usage["within_budget"]:
+        return {"text": "Budget LLM quotidien atteint — repasse demain."}
+
+    async def gen():
+        yield {"event": "start", "data": json.dumps({"thread_id": req.thread_id})}
+        parts: list[str] = []
+        try:
+            async for chunk in agent.stream(req.thread_id, req.message):
+                parts.append(chunk)
+                yield {"event": "token", "data": chunk}
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Chat en échec")
+            yield {"event": "error", "data": json.dumps({"error": str(exc)[:500]})}
+            return
+        full = "".join(parts)
+        yield {"event": "done", "data": json.dumps({"text": full})}
+
+    return EventSourceResponse(gen())
+
+
+# -------------------------------------------------------------- digest
+@app.post("/api/digest/generate")
+async def digest_generate() -> dict:
+    from .agent.digest import generate_digest
+
+    result = await generate_digest(
+        _db(), settings.coach_username,
+        model=app.state.agent._model if app.state.agent else None,
+    )
+    return result
+
+
+@app.get("/api/digest/latest")
+async def digest_latest() -> dict:
+    cur = await _db().execute(
+        "SELECT period, facts, narrative, created_at FROM digests ORDER BY id DESC LIMIT 1"
+    )
+    row = await cur.fetchone()
+    if not row:
+        return {"period": None, "facts": None, "narrative": None}
+    return {"period": row["period"], "facts": json.loads(row["facts"] or "{}"),
+            "narrative": row["narrative"], "created_at": row["created_at"]}
 
 
 if __name__ == "__main__":
