@@ -110,8 +110,8 @@ async def get_game(game_id: int) -> GameDetailOut:
 
     plies = []
     cur = await _db().execute(
-        """SELECT ply, san, fen_before, eval_before_cp, mate_before, eval_after_cp,
-                  mate_after, best_move_uci, cp_loss, winprob_loss, classification,
+        """SELECT ply, san, uci, fen_before, fen_after, eval_before_cp, mate_before, eval_after_cp,
+                  mate_after, best_move_uci, best_move_san, cp_loss, winprob_loss, classification,
                   clk, time_taken, is_player, phase, is_book
            FROM plies WHERE game_id=? ORDER BY ply""", (game_id,)
     )
@@ -119,18 +119,21 @@ async def get_game(game_id: int) -> GameDetailOut:
         plies.append({
             "ply": p["ply"],
             "san": p["san"],
+            "uci": p["uci"],
             "fen_before": p["fen_before"],
+            "fen_after": p["fen_after"],
             "eval_before": {"cp": p["eval_before_cp"], "mate": p["mate_before"]},
             "eval_after": {"cp": p["eval_after_cp"], "mate": p["mate_after"]},
             "best_move": p["best_move_uci"],
+            "best_move_san": p["best_move_san"],
             "cp_loss": p["cp_loss"],
             "winprob_loss": p["winprob_loss"],
             "classification": p["classification"],
             "clk": p["clk"],
             "time_taken": p["time_taken"],
             "is_player": bool(p["is_player"]),
-            "phase": p["phase"],
             "is_book": bool(p["is_book"]),
+            "phase": p["phase"],
         })
     return GameDetailOut(**game.model_dump(), plies=plies)
 

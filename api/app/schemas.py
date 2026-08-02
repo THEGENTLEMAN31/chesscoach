@@ -51,14 +51,20 @@ class SyncResult(BaseModel):
 class PlyOut(BaseModel):
     ply: int
     san: str | None
+    uci: str | None = None
     fen_before: str
+    fen_after: str | None = None
     eval_before: EvalPoint | None = None
     eval_after: EvalPoint | None = None
     best_move: str | None = None
+    best_move_san: str | None = None
     cp_loss: float | None = None
+    winprob_loss: float | None = None
     classification: str | None = None
     clk: float | None = None
+    time_taken: float | None = None
     is_player: bool
+    is_book: bool = False
     phase: str | None = None
 
 
