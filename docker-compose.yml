@@ -1,0 +1,32 @@
+services:
+  api:
+    build: ./api
+    container_name: chesscoach-api
+    restart: unless-stopped
+    environment:
+      - COACH_USERNAME=${COACH_USERNAME:-thegentleman31}
+      - ANALYZER_URL=http://analyzer:8002
+      - OPENROUTER_KEY
+      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-}
+      - LLM_ENABLED=${LLM_ENABLED:-false}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - analyzer
+
+  analyzer:
+    build: ./analyzer
+    container_name: chesscoach-analyzer
+    restart: unless-stopped
+    volumes:
+      - ./data/cache:/app/cache
+
+  web:
+    build: ./web
+    container_name: chesscoach-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      - api
