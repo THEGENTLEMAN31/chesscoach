@@ -16,15 +16,18 @@ async def get_game(db: aiosqlite.Connection, game_id: int) -> dict | None:
 
 async def list_games(
     db: aiosqlite.Connection, username: str, time_class: str | None = None,
-    limit: int = 20,
+    status: str | None = None, limit: int = 20, offset: int = 0,
 ) -> list[dict]:
     sql = "SELECT id, end_time, white, black, result, player_color, time_class, eco, opening_name, accuracy, acpl FROM games WHERE username=?"
     params: list = [username]
     if time_class:
         sql += " AND time_class=?"
         params.append(time_class)
-    sql += " ORDER BY end_time DESC LIMIT ?"
-    params.append(limit)
+    if status:
+        sql += " AND status=?"
+        params.append(status)
+    sql += " ORDER BY end_time DESC LIMIT ? OFFSET ?"
+    params += [limit, offset]
     cur = await db.execute(sql, params)
     return [dict(r) for r in await cur.fetchall()]
 
@@ -174,17 +177,150 @@ async def repertoire(db: aiosqlite.Connection, username: str) -> dict:
     return {"repertoire": [dict(r) for r in await cur.fetchall()]}
 
 
-async def exercices(db: aiosqlite.Connection, username: str, limit: int = 6) -> list[dict]:
-    """Les pires bévues récentes, transformées en exercices (fen + solution)."""
-    cur = await db.execute(
-        """SELECT g.id AS game_id, p.ply, p.san, p.fen_before, p.best_move_uci,
-                  p.best_move_san, p.winprob_loss, p.phase, p.move_number
-           FROM plies p JOIN games g ON g.id=p.game_id
+async def exercices(db: aiosqlite.Connection, username: str, limit: int = 6,
+                    concept: str | None = None,
+                    time_class: str | None = None) -> list[dict]:
+    """Les pires bévues récentes, transformées en exercices (fen + solution), avec rotation.
+
+    `concept` : filtre sur le concept détecté (clé concepts, ex. "hanging_piece").
+    `time_class` : filtre sur le format de la partie d'origine (rapid / blitz / ...).
+
+    Rotation : priorité de base = perte de probabilité (les pires d'abord) ; un échec
+    récent fait remonter la position (à retenter) ; une réussite récente (ou répétée)
+    la fait descendre dans la liste — on n'offre pas toujours les mêmes exercices.
+    """
+    q = """SELECT g.id AS game_id, p.ply, p.san, p.fen_before, p.best_move_uci,
+                  p.best_move_san, p.winprob_loss, p.cp_loss, p.phase, p.move_number,
+                  p.concept, p.color, g.white, g.black, g.result, g.player_color,
+                  g.end_time, g.opening_name, g.eco, g.time_class,
+                  COALESCE(s.correct_count,0) AS correct_count,
+                  COALESCE(s.wrong_count,0) AS wrong_count,
+                  s.last_attempt AS last_attempt, s.last_correct AS last_correct
+           FROM plies p
+           JOIN games g ON g.id=p.game_id
+           LEFT JOIN (
+               SELECT game_id, ply,
+                      SUM(correct) AS correct_count,
+                      SUM(1-correct) AS wrong_count,
+                      MAX(created_at) AS last_attempt,
+                      MAX(CASE WHEN correct=1 THEN created_at END) AS last_correct
+               FROM studied_positions
+               GROUP BY game_id, ply
+           ) s ON s.game_id=p.game_id AND s.ply=p.ply
            WHERE g.username=? AND p.is_player=1 AND p.classification='blunder'
-             AND p.best_move_uci IS NOT NULL
-           ORDER BY p.winprob_loss DESC LIMIT ?""", (username, limit)
-    )
+             AND p.best_move_uci IS NOT NULL"""
+    params: list = [username]
+    if concept:
+        q += " AND p.concept=?"
+        params.append(concept)
+    if time_class:
+        q += " AND g.time_class=?"
+        params.append(time_class)
+    rows = [dict(r) for r in await (await db.execute(q, params)).fetchall()]
+
+    for r in rows:
+        correct = r["correct_count"]
+        score = r["winprob_loss"] or 0
+        if r["last_attempt"]:
+            if r["last_correct"] is None or r["last_attempt"] > r["last_correct"]:
+                score += 150  # dernier essai raté → remonter pour retenter
+            else:
+                score -= 250  # dernier essai réussi → descendre
+        if correct >= 2:
+            score -= 200      # maîtrisé (réussi plusieurs fois) → tout en bas
+        elif correct >= 1:
+            score -= 80
+        r["_score"] = score
+
+    rows.sort(key=lambda r: r["_score"], reverse=True)
+    for r in rows:
+        r.pop("_score", None)
+    return rows[:limit]
+
+
+async def recent_moves(
+    db: aiosqlite.Connection, username: str,
+    classification: str | None = None, time_class: str | None = None,
+    eco: str | None = None, concept: str | None = None,
+    phase: str | None = None, order: str = "recent", limit: int = 20,
+) -> list[dict]:
+    """Coups fautifs du joueur (blunders/mistakes), joints aux infos de partie.
+
+    Filtres optionnels : classification (liste séparée par des virgules), time_class,
+    eco, concept, phase. Tri par `recent` (date) ou `worst` (perte de probabilité).
+    """
+    classes = [c.strip() for c in (classification or "").split(",") if c.strip()]
+    if not classes:
+        classes = ["blunder", "mistake"]
+    sql = """
+        SELECT g.id AS game_id, p.ply, p.move_number, p.san, p.classification,
+               p.winprob_loss, p.cp_loss, p.phase, p.time_taken, p.concept,
+               p.fen_before, p.best_move_san, g.end_time, g.time_class, g.result,
+               g.player_color, g.opening_name, g.eco, g.white, g.black
+        FROM plies p JOIN games g ON g.id = p.game_id
+        WHERE g.username=? AND p.is_player=1 AND p.is_book=0
+          AND p.classification IN (""" + ",".join("?" * len(classes)) + """)"""
+    params: list = [username, *classes]
+    if time_class:
+        sql += " AND g.time_class=?"
+        params.append(time_class)
+    if eco:
+        sql += " AND g.eco=?"
+        params.append(eco)
+    if concept:
+        sql += " AND p.concept=?"
+        params.append(concept)
+    if phase:
+        sql += " AND p.phase=?"
+        params.append(phase)
+    if order == "worst":
+        sql += " ORDER BY COALESCE(p.winprob_loss,0) DESC, g.end_time DESC"
+    else:
+        sql += " ORDER BY g.end_time DESC, p.ply"
+    sql += " LIMIT ?"
+    params.append(limit)
+    cur = await db.execute(sql, params)
     return [dict(r) for r in await cur.fetchall()]
+
+
+async def etude_stats(db: aiosqlite.Connection, username: str,
+                      time_class: str | None = None) -> dict:
+    """Statistiques des positions étudiées (exercices tentés) par format."""
+    where = " WHERE username=?"
+    params: list = [username]
+    if time_class:
+        where += " AND time_class=?"
+        params.append(time_class)
+    cur = await db.execute(
+        """SELECT COUNT(*) AS n, COALESCE(SUM(correct),0) AS correct,
+                  ROUND(100.0*COALESCE(SUM(correct),0)/MAX(1,COUNT(*)),1) AS correct_rate,
+                  MIN(created_at) AS first_at, MAX(created_at) AS last_at
+           FROM studied_positions""" + where, params)
+    row = dict((await cur.fetchone()))
+    cur = await db.execute(
+        """SELECT concept, COUNT(*) AS n FROM studied_positions
+           """ + where + """ AND concept IS NOT NULL
+           GROUP BY concept ORDER BY n DESC LIMIT 3""", params)
+    row["by_concept"] = [dict(r) for r in await cur.fetchall()]
+    cur = await db.execute(
+        """SELECT COUNT(*) AS n FROM studied_positions
+           """ + where + """ AND created_at >= datetime('now','-7 days')""", params)
+    row["last_7d"] = (await cur.fetchone())["n"]
+    return row
+
+
+async def record_etude(db: aiosqlite.Connection, payload) -> int:
+    """Enregistre une tentative d'exercice (position étudiée)."""
+    cur = await db.execute(
+        """INSERT INTO studied_positions
+           (username, time_class, game_id, ply, fen, san, best_move_uci,
+            best_move_san, concept, attempt, correct)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (payload.username, payload.time_class, payload.game_id, payload.ply,
+         payload.fen, payload.san, payload.best_move_uci, payload.best_move_san,
+         payload.concept, payload.attempt, 1 if payload.correct else 0))
+    await db.commit()
+    return cur.lastrowid
 
 
 async def what_if(db: aiosqlite.Connection, game_id: int, ply: int) -> dict | None:

@@ -14,10 +14,12 @@ from datetime import datetime, timezone
 import aiosqlite
 import chess
 import chess.pgn
+import httpx
 
 from ..analysis_client import AnalyzerClient
 from ..chesscom import ChessComClient, ChessComError
 from ..config import settings
+from .. import concepts as concepts_mod
 from .. import eval as eval_mod
 from ..openings import OpeningBook
 from ..pgn import parse_pgn
@@ -203,6 +205,11 @@ class SyncPipeline:
             try:
                 await self._analyze_one(row, depth_by_class.get(row["time_class"], 16))
                 done += 1
+            except httpx.HTTPError as exc:
+                # Erreur réseau/moteur transitoire : la partie reste 'synced'
+                # et sera reprise au prochain passage du worker.
+                logger.warning("Moteur indisponible (#%s) : %s", row["id"], exc)
+                break
             except Exception as exc:  # noqa: BLE001
                 logger.error("Analyse échouée partie #%s: %s", row["id"], exc)
                 await self.db.execute(
@@ -245,6 +252,7 @@ class SyncPipeline:
         scores: list[float] = []
         losses: list[float] = []
         counts: dict[str, int] = {}
+        prev_player_error = False
 
         for k, m in enumerate(parsed.moves):
             before = positions[k]
@@ -288,14 +296,46 @@ class SyncPipeline:
                 after_side = -ev_after.cp if m.color == "w" else ev_after.cp
                 cp_loss = round(before_side - after_side, 1)
 
+            # --- détection du CONCEPT derrière l'erreur (joueur seulement) ---
+            concept = None
+            concepts_json = None
+            if m.color == player_color and classification in ("blunder", "mistake"):
+                try:
+                    opp = parsed.moves[k - 1].san if k > 0 else None
+                    res = concepts_mod.analyze_error(
+                        fen_before=fen_list[k],
+                        san=m.san,
+                        uci=m.uci,
+                        best_uci=best_move_uci,
+                        best_san=best_move_san,
+                        mate_before=ev_before.mate,
+                        mate_after=ev_after.mate,
+                        phase=phase_of(board, m.ply),
+                        color=m.color,
+                        time_taken=m.time_taken,
+                        winprob_before=wp_b,
+                        opponent_san=opp,
+                        opponent_fen=fen_list[k - 1] if k > 0 else None,
+                        is_near_book_exit=exit_ply >= 0 and k <= exit_ply + 2,
+                        previous_was_error=prev_player_error,
+                    )
+                    concept = res.primary
+                    concepts_json = json.dumps(
+                        {"concepts": res.concepts, "causes": res.causes, "primary": res.primary},
+                        ensure_ascii=False,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Concept non détecté (%s): %s", m.san, exc)
+
             await self.db.execute(
                 """INSERT OR REPLACE INTO plies
                    (game_id, ply, move_number, color, san, uci, fen_before, fen_after,
                     eval_before_cp, mate_before, eval_after_cp, mate_after,
                     best_move_uci, best_move_san, pv_best, cp_loss,
                     winprob_before, winprob_after, winprob_loss, classification,
-                    clk, time_taken, phase, is_book, is_player)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    clk, time_taken, phase, is_book, is_player,
+                    concept, concepts)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     game_id, m.ply, m.ply // 2 + 1, m.color, m.san, m.uci,
                     fen_list[k], fen_after_list[k],
@@ -310,8 +350,11 @@ class SyncPipeline:
                     m.clk, m.time_taken, phase_of(board, m.ply),
                     1 if is_book else 0,
                     1 if m.color == player_color else 0,
+                    concept, concepts_json,
                 ),
             )
+            if m.color == player_color:
+                prev_player_error = classification in ("blunder", "mistake")
 
         accuracy = eval_mod.accuracy(scores)
         acpl = eval_mod.acpl_from_losses(losses)

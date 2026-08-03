@@ -20,7 +20,7 @@ from .chesscom import ChessComClient
 from .config import settings
 from .db import init_db
 from .openings import OpeningBook
-from .schemas import GameDetailOut, GameOut, SyncRequest, SyncResult
+from .schemas import EtudeAttempt, GameDetailOut, GameOut, GamesPage, SyncRequest, SyncResult
 from .services.manager import SyncManager
 
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +42,8 @@ async def lifespan(app: FastAPI):
     app.state.manager = SyncManager(
         app.state.db, app.state.chesscom, app.state.analyzer, app.state.book
     )
+    app.state.manager.start_worker(settings.coach_username)
+    app.state.manager.start_autosync(settings.coach_username)
     logger.info("API prête (book=%s positions)", len(app.state.book._by_epd))
 
     # --- agent LLM (facultatif, mesure le quota réel au démarrage) ---
@@ -92,6 +94,8 @@ async def lifespan(app: FastAPI):
     yield
     if app.state.nightly_task:
         app.state.nightly_task.cancel()
+    await app.state.manager.stop_autosync()
+    await app.state.manager.stop_worker()
     if getattr(app.state, "memory_db", None):
         await app.state.memory_db.close()
     await app.state.analyzer.aclose()
@@ -136,15 +140,16 @@ async def sync_status() -> dict:
 
 
 # --------------------------------------------------------------- games
-@app.get("/api/games", response_model=list[GameOut])
+@app.get("/api/games", response_model=GamesPage)
 async def list_games(
     username: str = Query(settings.coach_username),
     time_class: str | None = None,
     status: str | None = None,
+    eco: str | None = None,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
-) -> list[GameOut]:
-    sql = "SELECT * FROM games WHERE username=?"
+) -> GamesPage:
+    sql = "FROM games WHERE username=?"
     params: list = [username]
     if time_class:
         sql += " AND time_class=?"
@@ -152,10 +157,17 @@ async def list_games(
     if status:
         sql += " AND status=?"
         params.append(status)
-    sql += " ORDER BY end_time DESC LIMIT ? OFFSET ?"
-    params += [limit, offset]
-    cursor = await _db().execute(sql, params)
-    return [_game_from_row(r) for r in await cursor.fetchall()]
+    if eco:
+        sql += " AND eco=?"
+        params.append(eco)
+    cursor = await _db().execute("SELECT COUNT(*) AS total " + sql, params)
+    total = (await cursor.fetchone())["total"]
+    cursor = await _db().execute(
+        "SELECT * " + sql + " ORDER BY end_time DESC LIMIT ? OFFSET ?",
+        [*params, limit, offset],
+    )
+    items = [_game_from_row(r) for r in await cursor.fetchall()]
+    return GamesPage(total=total, items=items)
 
 
 @app.get("/api/games/{game_id}", response_model=GameDetailOut)
@@ -170,7 +182,7 @@ async def get_game(game_id: int) -> GameDetailOut:
     cur = await _db().execute(
         """SELECT ply, san, uci, fen_before, fen_after, eval_before_cp, mate_before, eval_after_cp,
                   mate_after, best_move_uci, best_move_san, cp_loss, winprob_loss, classification,
-                  clk, time_taken, is_player, phase, is_book
+                  clk, time_taken, is_player, phase, is_book, concept
            FROM plies WHERE game_id=? ORDER BY ply""", (game_id,)
     )
     for p in await cur.fetchall():
@@ -206,6 +218,7 @@ async def get_game(game_id: int) -> GameDetailOut:
             "is_player": bool(p["is_player"]),
             "is_book": bool(p["is_book"]),
             "phase": p["phase"],
+            "concept": p["concept"],
         })
     return GameDetailOut(**game.model_dump(), plies=plies)
 
@@ -274,6 +287,105 @@ async def players() -> list[dict]:
         "SELECT username, is_active, last_analyzed_at FROM players ORDER BY last_analyzed_at DESC"
     )
     return [dict(r) for r in await cur.fetchall()]
+
+
+# --------------------------------------------------------------- profil joueur
+@app.get("/api/profile/{username}")
+async def profile_get(username: str,
+                      time_class: str = Query("global")) -> dict:
+    from .agent.profile import get_profile
+
+    if not username.strip():
+        raise HTTPException(400, "username vide")
+    try:
+        return await get_profile(_db(), username, time_class=time_class)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"Profil impossible : {exc}") from exc
+
+
+@app.get("/api/profile/{username}/all")
+async def profile_all(username: str,
+                      recompute: bool = Query(False)) -> dict:
+    from .agent.profile import get_all
+
+    if not username.strip():
+        raise HTTPException(400, "username vide")
+    try:
+        return await get_all(_db(), username, recompute=recompute)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"Profil impossible : {exc}") from exc
+
+
+@app.post("/api/profile/{username}/recompute")
+async def profile_recompute(username: str,
+                            time_class: str = Query("global")) -> dict:
+    from .agent.profile import get_profile
+
+    if not username.strip():
+        raise HTTPException(400, "username vide")
+    try:
+        return await get_profile(_db(), username, recompute=True, time_class=time_class)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"Profil impossible : {exc}") from exc
+
+
+@app.get("/api/profile/{username}/history")
+async def profile_history_endpoint(username: str,
+                                   time_class: str | None = None) -> dict:
+    from .agent.profile import profile_history
+
+    if not username.strip():
+        raise HTTPException(400, "username vide")
+    return await profile_history(_db(), username, time_class=time_class)
+
+
+# --------------------------------------------------------------- entraînement
+@app.get("/api/exercices")
+async def exercices(username: str = "thegentleman31", concept: str | None = None,
+                    time_class: str | None = None,
+                    nombre: int = 6) -> list[dict]:
+    from .agent import data_service as ds
+
+    if not username.strip():
+        raise HTTPException(400, "username vide")
+    nombre = max(1, min(int(nombre), 30))
+    return await ds.exercices(_db(), username, nombre, concept, time_class)
+
+
+@app.get("/api/moves")
+async def moves(username: str = Query(settings.coach_username),
+                classification: str | None = None,
+                time_class: str | None = None,
+                eco: str | None = None,
+                concept: str | None = None,
+                phase: str | None = None,
+                order: str = Query("recent"),
+                limit: int = Query(20, ge=1, le=100)) -> list[dict]:
+    from .agent import data_service as ds
+
+    return await ds.recent_moves(_db(), username, classification, time_class,
+                                 eco, concept, phase, order, limit)
+
+
+@app.get("/api/etudes")
+async def etudes_get(username: str = Query(settings.coach_username),
+                     time_class: str | None = None) -> dict:
+    from .agent import data_service as ds
+
+    return await ds.etude_stats(_db(), username, time_class)
+
+
+@app.post("/api/etudes")
+async def etudes_post(req: EtudeAttempt) -> dict:
+    from .agent import data_service as ds
+
+    if not req.username.strip():
+        raise HTTPException(400, "username vide")
+    try:
+        row_id = await ds.record_etude(_db(), req)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"Enregistrement impossible : {exc}") from exc
+    return {"ok": True, "id": row_id}
 
 
 # --------------------------------------------------------------- chat

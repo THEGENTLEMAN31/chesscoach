@@ -45,6 +45,19 @@ export default function Chat({ threadId, placeholder }: Props) {
         body: JSON.stringify({ message: text, thread_id: threadId }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const contentType = res.headers.get("content-type") ?? "";
+      if (contentType.includes("application/json")) {
+        const data = await res.json();
+        setMessages((m) => {
+          const copy = [...m];
+          copy[copy.length - 1] = {
+            role: "assistant",
+            text: (data as { text?: string }).text ?? "(réponse vide)",
+          };
+          return copy;
+        });
+        return;
+      }
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buf = "";

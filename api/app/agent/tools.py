@@ -32,12 +32,18 @@ def _out(obj) -> str:
 def build_tools(ctx: AgentContext) -> list:
     @tool
     async def get_partie(partie_id: int) -> str:
-        """Récupère le récap d'une partie analysée (adversaire, résultat, ouverture, précision) et ses coups fautifs."""
+        """Récupère le récap d'une partie analysée (adversaire, résultat, ouverture, précision) et ses coups fautifs. Le joueur peut ouvrir la revue visuelle sur /revue/{partie_id}."""
         game = await ds.get_game(ctx.db, partie_id)
         if not game:
             return "Partie introuvable."
         review = await ds.review_game(ctx.db, partie_id)
         return _out(review)
+
+    @tool
+    async def list_games(limit: int = 10) -> str:
+        """Liste les parties récentes analysées du joueur : format, résultat, adversaire, précision, ouverture, date — avec leur game_id (ouvrable sur /revue/{game_id})."""
+        return _out(await ds.list_games(ctx.db, ctx.username, limit=limit, offset=0,
+                                        status="analyzed"))
 
     @tool
     async def review_partie(partie_id: int) -> str:
@@ -58,14 +64,44 @@ def build_tools(ctx: AgentContext) -> list:
         return _out(await ds.patterns(ctx.db, ctx.username))
 
     @tool
+    async def profil_joueur() -> str:
+        """Le profil pédagogique du joueur : forces, faiblesses par famille, concepts tactiques manquants, causes racines (temps, tilt, position gagnante…), style, mental, conversion, objectif Elo, tendances 30j, recommandations."""
+        from .profile import get_profile
+
+        try:
+            profile = await get_profile(ctx.db, ctx.username)
+        except Exception as exc:  # noqa: BLE001
+            return f"Profil impossible: {exc}"
+        return _out(profile)
+
+    @tool
+    async def progression_joueur() -> str:
+        """L'évolution du joueur dans le temps : courbe Elo, tendances, et concepts qui s'améliorent ou se dégradent sur les 30 derniers jours."""
+        from .profile import get_profile, profile_history
+
+        try:
+            profile = await get_profile(ctx.db, ctx.username)
+            history = await profile_history(ctx.db, ctx.username)
+        except Exception as exc:  # noqa: BLE001
+            return f"Progression impossible: {exc}"
+        return _out({
+            "elo_curve": profile.get("progress", {}).get("elo_curve"),
+            "elo_trend": profile.get("progress", {}).get("elo_trend"),
+            "accuracy_trend": profile.get("progress", {}).get("accuracy_trend"),
+            "improving_30j": profile.get("trends", {}).get("improving"),
+            "worsening_30j": profile.get("trends", {}).get("worsening"),
+            "history_snapshots": history.get("snapshots"),
+        })
+
+    @tool
     async def repertoire() -> str:
         """Le répertoire d'ouvertures du joueur (comme Blancs/Noirs), avec fréquences et précision moyenne."""
         return _out(await ds.repertoire(ctx.db, ctx.username))
 
     @tool
-    async def exercices(nombre: int = 6) -> str:
-        """Propose des exercices à partir des pires bévues du joueur : position FEN, coup joué, coup du moteur."""
-        return _out(await ds.exercices(ctx.db, ctx.username, nombre))
+    async def exercices(nombre: int = 6, concept: str | None = None) -> str:
+        """Propose des exercices à partir des pires bévues du joueur : position FEN, coup joué, coup du moteur. `concept` filtre sur un concept (clé, ex. 'hanging_piece' ou 'back_rank')."""
+        return _out(await ds.exercices(ctx.db, ctx.username, nombre, concept))
 
     @tool
     async def check_solution(fen: str, coup: str) -> str:
@@ -142,7 +178,7 @@ def build_tools(ctx: AgentContext) -> list:
             return f"Erreur: {exc}"
 
     return [
-        get_partie, review_partie, stats_joueur, patterns_joueur, repertoire,
-        exercices, check_solution, analyse_position, variante, what_if,
-        sync_parties, memoire_lire, memoire_ecrire,
+        get_partie, list_games, review_partie, stats_joueur, patterns_joueur,
+        profil_joueur, progression_joueur, repertoire, exercices, check_solution,
+        analyse_position, variante, what_if, sync_parties, memoire_lire, memoire_ecrire,
     ]

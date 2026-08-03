@@ -53,28 +53,28 @@ export default function EvalCurve({ game, selectedPly, onSelect }: Props) {
         data={data}
         margin={{ top: 8, right: 12, bottom: 4, left: -20 }}
       >
-        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+        <CartesianGrid strokeDasharray="3 3" stroke="#d4d4d4" />
         <XAxis
           dataKey="ply"
-          tick={{ fill: "#94a3b8", fontSize: 11 }}
+          tick={{ fill: "#6b7280", fontSize: 11 }}
           tickLine={false}
-          label={{ value: "coup", position: "insideBottomRight", fill: "#64748b", fontSize: 11 }}
+          label={{ value: "coup", position: "insideBottomRight", fill: "#6b7280", fontSize: 11 }}
         />
         <YAxis
           domain={[0, 100]}
-          tick={{ fill: "#94a3b8", fontSize: 11 }}
+          tick={{ fill: "#6b7280", fontSize: 11 }}
           tickLine={false}
-          label={{ value: "probabilité de gain (%)", angle: -90, position: "insideLeft", fill: "#64748b", fontSize: 11 }}
+          label={{ value: "probabilité de gain (%)", angle: -90, position: "insideLeft", fill: "#6b7280", fontSize: 11 }}
         />
         <Tooltip
-          contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }}
-          labelStyle={{ color: "#e2e8f0" }}
+          contentStyle={{ background: "#fff", border: "1px solid #e5e5e5", borderRadius: 8, color: "#1c1c1c" }}
+          labelStyle={{ color: "#1c1c1c" }}
           formatter={(value: number | string, _name, item) => {
             const p = data[Number(item.payload?.ply)];
             return [`${value}%`, p?.san ? `après ${p.san}` : "position"];
           }}
         />
-        <ReferenceLine y={50} stroke="#475569" strokeDasharray="4 4" />
+        <ReferenceLine y={50} stroke="#9a9a9a" strokeDasharray="4 4" />
         {selectedPly >= 0 && (
           <ReferenceLine x={selectedPly} stroke="#38bdf8" strokeWidth={2} />
         )}

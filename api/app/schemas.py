@@ -66,6 +66,7 @@ class PlyOut(BaseModel):
     is_player: bool
     is_book: bool = False
     phase: str | None = None
+    concept: str | None = None
 
 
 class GameOut(BaseModel):
@@ -89,5 +90,47 @@ class GameOut(BaseModel):
     classifications: dict | None
 
 
+class GamesPage(BaseModel):
+    total: int
+    items: list[GameOut]
+
+
 class GameDetailOut(GameOut):
     plies: list[PlyOut] = []
+
+
+class MoveOut(BaseModel):
+    game_id: int
+    ply: int
+    move_number: int | None = None
+    san: str | None = None
+    classification: str | None = None
+    winprob_loss: float | None = None
+    cp_loss: float | None = None
+    phase: str | None = None
+    time_taken: float | None = None
+    concept: str | None = None
+    fen_before: str | None = None
+    best_move_san: str | None = None
+    end_time: int | None = None
+    time_class: str | None = None
+    result: str | None = None
+    player_color: str | None = None
+    opening_name: str | None = None
+    eco: str | None = None
+    white: str | None = None
+    black: str | None = None
+
+
+class EtudeAttempt(BaseModel):
+    username: str
+    time_class: str = "global"
+    game_id: int | None = None
+    ply: int | None = None
+    fen: str
+    san: str | None = None
+    best_move_uci: str
+    best_move_san: str | None = None
+    concept: str | None = None
+    attempt: str | None = None
+    correct: bool = False

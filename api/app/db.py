@@ -15,7 +15,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 5
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -133,6 +133,61 @@ MIGRATIONS: dict[int, str] = {
         status     TEXT NOT NULL DEFAULT 'pending',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    """,
+    3: """
+    ALTER TABLE plies ADD COLUMN concept TEXT;
+    ALTER TABLE plies ADD COLUMN concepts TEXT;
+
+    CREATE TABLE IF NOT EXISTS player_profiles (
+        username    TEXT PRIMARY KEY,
+        profile     TEXT NOT NULL,          -- json structuré (modèle de l'élève)
+        computed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    """,
+    4: """
+    CREATE TABLE IF NOT EXISTS profile_history (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        username    TEXT NOT NULL,
+        computed_at TEXT NOT NULL,
+        elo         INTEGER,
+        games       INTEGER,
+        profile     TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_profile_history_user ON profile_history(username, computed_at);
+    """,
+    5: """
+    CREATE TABLE IF NOT EXISTS studied_positions (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        username      TEXT NOT NULL,
+        time_class    TEXT NOT NULL DEFAULT 'global',
+        game_id       INTEGER,
+        ply           INTEGER,
+        fen           TEXT NOT NULL,
+        san           TEXT,
+        best_move_uci TEXT NOT NULL,
+        best_move_san TEXT,
+        concept       TEXT,
+        attempt       TEXT,
+        correct       INTEGER NOT NULL DEFAULT 0,
+        created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_studied_user_class ON studied_positions(username, time_class, created_at);
+
+    CREATE TABLE IF NOT EXISTS player_profiles_v5 (
+        username    TEXT NOT NULL,
+        time_class  TEXT NOT NULL DEFAULT 'global',
+        profile     TEXT NOT NULL,
+        computed_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (username, time_class)
+    );
+    INSERT INTO player_profiles_v5 (username, time_class, profile, computed_at)
+        SELECT username, 'global', profile, computed_at FROM player_profiles;
+    DROP TABLE player_profiles;
+    ALTER TABLE player_profiles_v5 RENAME TO player_profiles;
+
+    ALTER TABLE profile_history ADD COLUMN time_class TEXT NOT NULL DEFAULT 'global';
+    CREATE INDEX IF NOT EXISTS idx_profile_history_user_class
+        ON profile_history(username, time_class, computed_at);
     """,
 }
 

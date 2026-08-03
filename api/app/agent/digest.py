@@ -69,6 +69,15 @@ async def compute_facts(db: aiosqlite.Connection, username: str, days: int = 7) 
 
     pats = await patterns(db, username)
 
+    cur = await db.execute(
+        """SELECT p.concept, COUNT(*) AS n, ROUND(AVG(p.winprob_loss),1) AS avg_loss
+           FROM plies p JOIN games g ON g.id=p.game_id
+           WHERE g.username=? AND p.is_player=1 AND p.classification IN ('blunder','mistake')
+             AND g.end_time>=? AND p.concept IS NOT NULL
+           GROUP BY p.concept ORDER BY n DESC LIMIT 4""", (username, since)
+    )
+    concepts_week = [dict(r) for r in await cur.fetchall()]
+
     focus = None
     if blunders.get("blunders_rapides"):
         focus = "jouer plus lentement en position difficile : les bévues arrivent souvent en < 5 s"
@@ -84,6 +93,7 @@ async def compute_facts(db: aiosqlite.Connection, username: str, days: int = 7) 
         "worst_openings": worst_openings,
         "worst_phase": worst_phase,
         "trend_accuracy_last10": trend,
+        "concepts_week": concepts_week,
         "swings": pats.get("swings"),
         "suggested_focus": focus,
     }
@@ -129,7 +139,22 @@ async def narrate_facts(model, facts: dict, username: str) -> tuple[str, dict]:
 
 
 async def generate_digest(db: aiosqlite.Connection, username: str, model=None, days: int = 7) -> dict:
+    # Recalcule le profil : produit un snapshot d'historique quotidien (courbe Elo).
+    try:
+        from .profile import get_profile
+
+        profile = await get_profile(db, username, recompute=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Profil indisponible pour le digest : %s", exc)
+        profile = {}
     facts = await compute_facts(db, username, days)
+    facts["profile"] = {
+        "elo": profile.get("rating", {}).get("latest"),
+        "trend_30d": profile.get("progress", {}).get("elo_trend"),
+        "recommendations": profile.get("recommendations", []),
+        "improving": profile.get("trends", {}).get("improving", []),
+        "worsening": profile.get("trends", {}).get("worsening", []),
+    }
     narrative, usage = ("", {})
     if model is not None:
         narrative, usage = await narrate_facts(model, facts, username)

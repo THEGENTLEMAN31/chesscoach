@@ -40,17 +40,28 @@ RÈGLES ABSOLUES :
    (kind=prescription/diagnostic) ce que le joueur doit travailler.
 6. Reste synthétique (4-8 lignes), utilise du Markdown léger, évite le jargon inutile.
 7. Tu ne prétends jamais avoir analysé une partie qui n'est pas dans la base.
+8. Le profil pédagogique ci-dessous est injecté : utilise-le pour personnaliser (point de
+   départ, causes racines, concepts à travailler). Ne reformule pas ses chiffres.
 
 Contexte mémoire longue durée :
 {memory}
 
 Contexte rapide du jour :
 {quick_context}
+
+Profil pédagogique du joueur :
+{profile}
+
+Dans le frontend, chaque partie est cliquable vers une page de revue :
+`/revue/{game_id}` (tu peux mentionner ce lien dans tes réponses). Le joueur peut
+s'entraîner sur ses erreurs via la page Entraînement.
 """
 
 
-def build_system_prompt(username: str, memory_text: str, quick: str) -> SystemMessage:
-    return SystemMessage(content=SYSTEM_BASE.format(username=username, memory=memory_text, quick_context=quick))
+def build_system_prompt(username: str, memory_text: str, quick: str, profile_text: str = "") -> SystemMessage:
+    return SystemMessage(content=SYSTEM_BASE.format(
+        username=username, memory=memory_text, quick_context=quick, profile=profile_text,
+    ))
 
 
 class ChessCoachAgent:
@@ -72,8 +83,16 @@ class ChessCoachAgent:
         return {"configurable": {"thread_id": thread_id}}
 
     async def _prompt(self) -> SystemMessage:
+        from .profile import summarize_profile
+
         entries = await mem.read_memory(self.ctx.db)
-        return build_system_prompt(self.ctx.username, mem.memory_to_prompt(entries), "")
+        profile_text = await summarize_profile(self.ctx.db, self.ctx.username)
+        return build_system_prompt(
+            self.ctx.username,
+            mem.memory_to_prompt(entries),
+            "",
+            profile_text,
+        )
 
     async def invoke(self, thread_id: str, question: str) -> dict:
         """Réponse complète (non streamée). Renvoie {text, tool_calls, usage}."""
@@ -96,7 +115,6 @@ class ChessCoachAgent:
     async def stream(self, thread_id: str, question: str) -> AsyncIterator[str]:
         """Flux des morceaux de texte (SSE)."""
         prompt = await self._prompt()
-        last_usage: dict = {}
         async for event in self.graph.astream(
             {"messages": [prompt, HumanMessage(content=question)]},
             self._config(thread_id),
@@ -105,6 +123,3 @@ class ChessCoachAgent:
             message, _meta = event
             if isinstance(message, AIMessage) and message.content:
                 yield str(message.content)
-                last_usage = message.response_metadata.get("usage", {}) or last_usage
-        if last_usage:
-            yield f"\n\n[usage:{last_usage}]"
