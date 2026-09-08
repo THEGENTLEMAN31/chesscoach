@@ -44,9 +44,9 @@ Navigateur (PWA React)          VPS
 - [x] Backend refactoré : routers par domaine, multi-tenant `user_id`, migrations versionnées
 - [x] Auth complète : register (vérif pseudo chess.com + email à activer), login/refresh/logout, cookie httpOnly
 - [x] Design system (socle) : Tailwind v4 + DA noir profonde/bento/1 accent discret (#6fa8dc), thème clair/sombre, PWA installable (VitePWA)
-- [ ] Design system (suite) : shadcn/ui + composants Bklit UI (remplacement recharts) — pas nécessaires avant la refonte des pages graphiques
-- [~] Coach supprimée (route + Chat/Markdown/EvalCurve/MoveList retirés) + username hardcodé → session user (Scoping UI OK)
-- [ ] Corrections restantes lors du port des pages : `CLASS_LABEL[concept]` (Revue), targets hardcodées (Profil), relecture/puzzles à porter sur le DS
+- [x] Design system (suite) : shadcn/ui (components.json, cn, CSS vars branchées DA) + **Bklit UI line-chart** (registre @bklit/line-chart, vendu dans `src/components/charts/`)
+- [x] Coach supprimée (route + Chat/Markdown/EvalCurve/MoveList retirés) + username hardcodé → session user (Scoping UI OK)
+- [x] Corrections lors du port : `CLASS_LABEL[concept]` → `CONCEPT_LABEL[ply.concept]` (Revue), targets hardcodées → `profile.objective.targets` (Profil), relecture/puzzles/progression portés sur le DS
 
 ### Phase 1 — Cœur local-first
 - [ ] `EngineWorker` stockfish.js WASM : analyse incrémentale, barre d'avantage temps réel, MultiPV, profondeur adaptée device
@@ -61,12 +61,13 @@ Navigateur (PWA React)          VPS
 - [ ] (v2 only) service puzzles lichess — PAS avant la v1
 
 ### Phase 3 — Refonte pages
-- [ ] **Entraînement (priorité max)** : puzzles de mes parties + filtres complets + rotation espacée + suivi par concept + indicateur de réussite
-- [ ] Dashboard : digest de la semaine mis en avant, KPIs essentiels (elo/format, précision 30j, pires ouvertures, etc.), CTA « Analyser ma dernière partie », 5 dernières parties — style bento
-- [ ] Parties : groupées par jour, cartes compactes (adversaire/résultat/format/précision/badge gaffes/variation elo), ouverture/date repliées au tap, filtres format/statut/résultat/ouverture
-- [ ] Revue : barre d'avantage, panneau variantes, modes Rapide/Approfondi, taxonomie réelle (Brillant !! / Superbe ! / Meilleur ★ / Excellent !? / Bon / Imprécision ?! / Erreur ? / Occasion manquée / Gaffe ??)
-- [ ] Progression : 1 courbe lisse (sans points) Rapid+Blitz, légende, sélecteur période, panneau améliorations/régressions
-- [ ] Profil : conservation du contenu, polish mobile + fixes bugs
+- [~] **Entraînement** : puzzles de mes parties + filtres concept + suivi par concept + indicateur de réussite (porté). Reste : filtres cadence/gravité, rotation espacée
+- [~] Dashboard : KPIs essentiels + sync + digest opérationnels ; reste : CTA « Analyser ma dernière partie », 5 dernières parties
+- [~] Parties : liste + filtres format/statut + badges opérationnels ; reste : groupement par jour, cartes enrichies
+- [~] Revue : échiquier interactif + modes Moteur/Teste-toi + EvalCurve Bklit + coups/classifications ; reste : panneau variantes MultiPV (P1), taxonomie détaillée
+- [~] Progression : courbe Elo Bklit + tendances 30j + snapshots ; reste : sélecteur période
+- [~] Profil : contenu conservé + objectifs depuis `profile.objective.targets`
+- [ ] Réglages : toggles clic/coups légaux/éval rajoutés ✅ ; rien en attente
 
 ### Phase 4 — PWA & déploiement
 - [ ] PWA offline (lecture des données en cache), multi-appareils via sync
@@ -155,6 +156,24 @@ global sauf pour l'admin/seed).
   login 204 + cookie → `/api/stats` → données réelles scopées (rapid 3017 / blitz 2172).
 - **Piège node_modules** : installé root → impossible rm/mv cross-FS. Solution : **renommage même-FS** (rename syscall)
   `mkdir`dans `.poc-root` (gitignorés) puis `npm install` neuf. `npm` nécessite `PATH=/home/gentleman31/node/bin:$PATH`.
+
+## Session web — port pages V2 (fait le 08/09, commit 8b11779 poussé origin/v2)
+- **shadcn/ui + Bklit line-chart intégrés** : `components.json` (style new-york), `lib/utils.ts` (cn = clsx+tailwind-merge),
+  CSS vars shadcn branchées sur la DA (`:root`/`[data-theme]`, tokens neutres + `--chart-*` Bklit), `tw-animate-css`.
+  Registre : `npx shadcn add @bklit/line-chart --yes --overwrite` (vedu dans `src/components/charts/`, deps @visx/d3/motion/@number-flow).
+  Barrel `src/components/charts/index.ts`. `src/components/shimmering-text.tsx` créé (dépendance registre au chemin corrigé).
+- **Adaptations Bklit** : `tsconfig.lib` ES2022→ES2023 (uses `.at()`), refs React18 castées (`useRef<SVGPathElement | null>`),
+  hook `tickLabelFormatter` ajouté (LineChart → shell → dateLabels) pour axes « numéro de coup » (use `plyToDate/dateToPly` dans `lib/game/eval.ts`).
+- **Composants partagés** : `components/Board.tsx` (Chessboard responsive via ResizeObserver, dnd touch/HTML5 auto, hints Lichess,
+  promotion), `components/EvalCurve.tsx` (Bklit, tooltip typé, carry-forward des wp null), `components/MoveList.tsx` (DA).
+- **Libs** : `lib/game/board.ts`, `lib/game/settings.ts` (localStorage `chesscoach:settings`), `lib/game/eval.ts`.
+- **Pages portées** : Entraînement (puzzles, concepts, score, réplique adverse, recordEtude scoped session),
+  Revue (moteur/quiz, exploration libre, fix `CONCEPT_LABEL[ply.concept]`), Progression (profileAll, courbe Bklit,
+  tendances, snapshots), Profil (objectifs depuis `profile.objective.targets` → rapid 2000 / blitz 1800), Réglages
+  (toggles clic/coups légaux/éval pions-probabilité).
+- **Chunking** : manualChunks chart-vendor / motion / chess-vendor (bundle sans warning, 736 kB PWA).
+- E2E via `vite preview :4173` + proxy → login admin 204 + cookie, stats/games/exercices/profile/all réelles.
+  Admin de test : `admin@chesscoach.io` / `gentleman31_dev` (env `api/.env`).
 
 ## Pièges rencontrés (à retenir)
 - `.git/objects` d'origine appartenait à `root` (anciens builds Docker) → **nouveau dépôt git initialisé**, historique récupéré depuis `.git-poc-archive/` (archive conservée, gitignorée). Ne pas supprimer tant que le dépôt n'est pas poussé.
