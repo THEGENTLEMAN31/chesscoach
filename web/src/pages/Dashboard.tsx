@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BoltIcon, RefreshIcon } from "../components/icons";
 import { Button, Card, Spinner, Stat } from "../components/ui";
@@ -56,6 +57,17 @@ export default function Dashboard() {
     await api.sync(3);
     await syncQ.refetch();
   };
+
+  // Premier run : un compte neuf (aucune partie) déclenche automatiquement le
+  // chargement de son historique chess.com, sans bouton manuel.
+  const isEmpty = statsQ.data && statsQ.data.by_time_class.length === 0 && statsQ.data.move_classifications && Object.keys(statsQ.data.move_classifications).length === 0;
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (isEmpty && !running && !autoStartedRef.current) {
+      autoStartedRef.current = true;
+      void startSync();
+    }
+  }, [isEmpty, running]);
 
   const cls = statsQ.data?.move_classifications ?? {};
   const maxCls = Math.max(1, ...CLASS_ORDER.map((k) => cls[k] ?? 0));

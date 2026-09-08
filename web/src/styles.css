@@ -175,7 +175,7 @@ body {
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
+  --color-muted: var(--muted-foreground);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent-ui: var(--accent);
   --color-accent-ui-foreground: var(--accent-foreground);

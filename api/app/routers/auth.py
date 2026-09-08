@@ -6,6 +6,7 @@ PubAPI chess.com que le pseudo fourni existe bien.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -54,7 +55,9 @@ async def register(
     try:
         await chesscom.get_player(pseudo)
     except ChessComError as exc:
-        raise HTTPException(400, f"pseudo chess.com invalide : {exc}") from exc
+        raise HTTPException(
+            400, f"Ce pseudo chess.com n'existe pas. Vérifie l'orthographe ({exc})."
+        ) from exc
     except Exception as exc:  # noqa: BLE001 — réseau/API
         logger.warning("Vérification chess.com indisponible : %s", exc)
         raise HTTPException(503, "service chess.com indisponible, réessayez plus tard") from exc
@@ -70,6 +73,14 @@ async def register(
     if not settings.verify_email:
         user.is_verified = True
         await user_manager.user_db.session.commit()
+    # Premier chargement de la data chess.com de ce pseudo, en tâche de fond.
+    # Le compte n'est jamais « mort » : dès la création, son historique est
+    # récupéré + analysé (rapid/blitz), scoped par ce pseudo.
+    try:
+        manager = request.app.state.manager
+        asyncio.create_task(manager.start(pseudo, settings.sync_months))
+    except Exception:  # noqa: BLE001 — ne bloque jamais l'inscription
+        logger.warning("Premier sync auto échoué pour %s", pseudo, exc_info=True)
     return UserRead.model_validate(user)
 
 

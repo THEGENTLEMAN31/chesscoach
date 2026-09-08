@@ -80,14 +80,28 @@ Navigateur (PWA React)          VPS
 > le reste vers `127.0.0.1:8080` (web statique). nginx entièrement retiré.
 > Backup : `scripts/backup-db.sh` (snapshot cohérent via sqlite3 Python depuis le conteneur api,
 > rétention 14 jours, cron 3h30).
-> Auth prod : `JWT_SECRET`/`COOKIE_SECURE`/`BASE_URL`/`ALLOW_REGISTRATION=false`/`SEED_ADMIN_PASSWORD`
+> Auth prod : `JWT_SECRET`/`COOKIE_SECURE`/`BASE_URL`/`ALLOW_REGISTRATION=true` (multi-utilisateurs)/`SEED_ADMIN_PASSWORD`
 > via `.env` (gitignored). Admin prod recréé au démarrage par le seed si absent
 > (`is_verified`/`is_superuser` forcés au constructeur — fix `exclude_unset`).
 
+## Multi-utilisateurs — activé et validé le 08/09
+- **Principe** : chaque compte = un pseudo chess.com vérifié (PubAPI). `current_username`
+  renvoie `user.chesscom_username` (session, jamais le client) → toutes les routes métier
+  (games/stats/sync/training) sont sourdées par ce pseudo. Isolation prouvée en E2E prod
+  (compte `hikaru` : 291 parties => seulement Hikaru/poohineedyou, zéro fuite admin).
+- **Chargement à la création** : `auth.py` register lance `manager.start(pseudo, sync_months)`
+  en tâche de fond après création → l'historique rapid/blitz du pseudo est récupéré+analysé
+  automatiquement (pipeline scoped, dédup `(pgn, username)`). Le dashboard relance aussi le
+  sync si aucune partie n'existe (première visite).
+- `ALLOW_REGISTRATION=true` en prod (défaut compose). Seed admin (`thegentleman31`) inchangé.
+- **UX** : contraste `text-muted` corrigé (liaison `--color-muted: var(--muted-foreground)`
+  dans `@theme inline`), placeholder pseudo neutre (plus de `thegentleman31` exposé), message
+  « Ce pseudo chess.com n'existe pas. Vérifie l'orthographe. ».
+
 ## Solide arrivé sur la prod le 08/09 (recommandations appliquées)
 - **Sécurité** : mot de passe admin prod régénéré (seed + env, plus jamais de SQL direct), seed
-  force désormais `is_verified`/`is_superuser`, inscription publique fermée en prod
-  (`ALLOW_REGISTRATION=false` → 404), `JWT_SECRET` en dur retiré du code (env prod), cookie secure.
+  force désormais `is_verified`/`is_superuser`, `JWT_SECRET` en dur retiré du code (env prod), cookie secure.
+  (L'inscription, initialement fermée, a ensuite été **rouverte** pour le multi-utilisateurs — cf. ci-dessus.)
 - **Robustesse local-first** :
   - `web/src/lib/local/sync.ts` : `drainSyncQueue()` + `autoSync()` — resync automatique de la file
     au montage et au retour réseau (`navigator.onLine` / événement `online`).

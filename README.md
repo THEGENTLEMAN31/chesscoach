@@ -1,6 +1,6 @@
 # ChessCoach
 
-Coach d'échecs personnel : il récupère automatiquement tes parties chess.com, les analyse avec Stockfish et te produit des retours pédagogiques adaptés à ton niveau — profil de forces/faiblesses, exercices de vos pires bévues, revue de parties, tendances et objectif Elo par format, et un agent IA (LLM) qui répond à tes questions.
+Coach d'échecs personnel : il récupère automatiquement tes parties chess.com, les analyse avec Stockfish et te produit des retours pédagogiques adaptés à ton niveau — profil de forces/faiblesses, exercices de vos pires bévues, revue de parties, tendances et objectif Elo par format, et un agent IA (LLM) qui répond à tes questions. **Multi-utilisateurs** : chacun crée un compte avec son pseudo chess.com, ses données sont chargées à l'inscription et strictement isolées.
 
 > Cible : **2000 Elo en Rapide, 1800 en Blitz**.
 
@@ -88,7 +88,7 @@ Variables d'auth (prod) :
 | `JWT_SECRET` | `dev-secret-change-me` | Secret de session — **à changer en prod** (`openssl rand -hex 32`) |
 | `COOKIE_SECURE` | `false` | `true` derrière TLS (Caddy) |
 | `BASE_URL` | `http://localhost:8080` | URL publique (liens, cookie) |
-| `ALLOW_REGISTRATION` | `true` | `false` en prod (mono-pseudo) |
+| `ALLOW_REGISTRATION` | `true` | Inscription publique ouverte (multi-utilisateurs) |
 | `SEED_ADMIN_PASSWORD` | — | Recrée l'admin `admin@chesscoach.io` au démarrage si absent (env prod) |
 
 ---
@@ -118,6 +118,7 @@ scripts/backup-db.sh                # snapshot avant toute manip SQL
 ## Synchronisation & analyse
 
 - **Auto-sync** : toutes les 6 h (réglable), récupère le fichier mensuel complet de l'archive chess.com puis déduplique par PGN. Le cache de l'API chess.com peut retarder les nouvelles parties de 12 à 24 h.
+- **À la création du compte** : le premier sync est lancé automatiquement (charge l'historique rapid/blitz du pseudo, en tâche de fond). Le dashboard déclenche aussi le sync s'il ne reste aucune partie.
 - **Worker d'analyse** : tourne en continu, traite les parties par lots de 25 (`analysis_batch_size`) avec une pause (`analysis_batch_sleep`).
 - **Manuel** : bouton « Récupérer les dernières parties » dans le dashboard, ou `POST /api/sync` — la tâche s'exécute en arrière-plan.
 - Seuls les formats **rapid** et **blitz**, règles standard, avec PGN non vide, sont importés.
