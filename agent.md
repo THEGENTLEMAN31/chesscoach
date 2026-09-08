@@ -70,14 +70,16 @@ Navigateur (PWA React)          VPS
 - [ ] Réglages : toggles clic/coups légaux/éval rajoutés ✅ ; rien en attente
 
 ### Phase 4 — PWA & déploiement
-- [ ] PWA offline (lecture des données en cache), multi-appareils via sync
-- [ ] Déploiement VPS docker-compose (api + analyzer + web) + backup SQLite
-- [ ] Validation visuelle + go production
+- [x] PWA offline (lecture des données en cache), multi-appareils via sync
+- [x] Déploiement VPS docker-compose (api + analyzer + web) + backup SQLite
+- [x] Validation visuelle + go production
 
-> **Déploiement = Caddy** (pas nginx) : reverse proxy avec TLS/Let's Encrypt automatique
-> (`tls domain` inline), un seul bloc pour statique + API, container officiel `caddy:2`.
-> Pas de nginx/certbot/cron de renouvellement. README/Dockerfile web encore sur nginx :
-> à migrer Caddy lors de la Phase 4.
+> **Déploiement = Caddy** (pas nginx) : reverse proxy public `chesscoach.btj.mooo.com`
+> (TLS/Let's Encrypt auto) + conteneur `web` sur caddy:2-alpine (statique + fallback SPA).
+> Caddy host route `/api/*` **directement** vers `127.0.0.1:8001` (API publiée sur le host),
+> le reste vers `127.0.0.1:8080` (web statique). nginx entièrement retiré.
+> Backup : `scripts/backup-db.sh` (snapshot cohérent via sqlite3 Python depuis le conteneur api,
+> rétention 14 jours). Admin prod = `admin@chesscoach.io` (même credentials qu'en dev).
 
 ## Plan de refactor backend (P0) — constat d'exploration
 > Conclu le 07/09 pendant la phase 0. Source de vérité : code lu (db.py, main.py, config.py, schemas.py,

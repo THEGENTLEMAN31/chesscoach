@@ -1,0 +1,22 @@
+:80 {
+    root * /srv/web
+    file_server
+
+    @spa {
+        not file
+    }
+    rewrite @spa /index.html
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+
+    @static {
+        path *.js *.css *.wasm *.woff2 *.svg *.webmanifest
+    }
+    header @static Cache-Control "public, max-age=86400"
+}

@@ -1,12 +1,18 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package.json ./
+COPY scripts/ ./scripts/
+COPY public/ ./public/
 RUN npm install --no-audit --no-fund
 COPY . .
 RUN npm run build
 
-FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Runtime : Caddy (serveur statique, pas de proxy — le reverse proxy public
+# est géré par Caddy sur le host). nginx est abandonné.
+FROM caddy:2-alpine
+
+COPY --from=build /app/dist /srv/web
+COPY Caddyfile /etc/caddy/Caddyfile
+
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]

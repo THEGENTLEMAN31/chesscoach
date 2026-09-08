@@ -10,6 +10,9 @@ services:
       - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL:-}
       - LLM_ENABLED=${LLM_ENABLED:-false}
+    ports:
+      # publié sur le host pour que Caddy (host) proxifie /api/ directement
+      - "127.0.0.1:8001:8001"
     volumes:
       - ./data:/app/data
     depends_on:

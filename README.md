@@ -26,9 +26,9 @@ Coach d'échecs personnel : il récupère automatiquement tes parties chess.com,
 
 | Service | Rôle | Port |
 | --- | --- | --- |
-| `api` | API FastAPI + pipeline sync + worker d'analyse + agent LLM | 8001 (interne) |
+| `api` | API FastAPI + pipeline sync + worker d'analyse + agent LLM | `127.0.0.1:8001` (Caddy host proxifie `/api/*`) |
 | `analyzer` | Service Stockfish (UCI) — évaluation des positions et des parties | 8002 (interne) |
-| `web` | Frontend React (nginx) | `127.0.0.1:8080` |
+| `web` | Frontend React (Caddy, statique + fallback SPA) | `127.0.0.1:8080` |
 
 ```
 chess.com ──► api (sync + analyse) ──► SQLite (/data/chesscoach.db)
