@@ -49,15 +49,15 @@ Navigateur (PWA React)          VPS
 - [x] Corrections lors du port : `CLASS_LABEL[concept]` → `CONCEPT_LABEL[ply.concept]` (Revue), targets hardcodées → `profile.objective.targets` (Profil), relecture/puzzles/progression portés sur le DS
 
 ### Phase 1 — Cœur local-first
-- [ ] `EngineWorker` stockfish.js WASM : analyse incrémentale, barre d'avantage temps réel, MultiPV, profondeur adaptée device
-- [ ] SQLite local (schéma miroir serveur) + module d'analyse partagé `shared/` (portage eval/concepts en TS)
-- [ ] Import instantané partie : URL chess.com (`pub/game/{user}/{id}`) ou PGN → analyse locale → stockage local → file de sync
-- [ ] Vérification de solution par le Worker (check_solution porté côté client)
+- [x] `EngineWorker` stockfish.js WASM : analyse incrémentale, barre d'avantage temps réel, MultiPV, profondeur adaptée device
+- [x] SQLite local (schéma miroir serveur) + module d'analyse partagé `shared/` (portage eval/concepts en TS)
+- [x] Import instantané partie : URL chess.com (`pub/game/{user}/{id}`) ou PGN → analyse locale → stockage local → file de sync
+- [x] Vérification de solution par le Worker (check_solution porté côté client)
 
 ### Phase 2 — Backend serveur (VPS)
-- [ ] Endpoints import/sync des analyses client, validés Pydantic, scoping par session (`user_id`)
-- [ ] Batch d'analyse historique conservé (archive chess.com, depth 16–18, dédup)
-- [ ] Profil/progression/digest opérationnels multi-tenant
+- [x] Endpoints import/sync des analyses client, validés Pydantic, scoping par session (`user_id`)
+- [x] Batch d'analyse historique conservé (archive chess.com, depth 16–18, dédup)
+- [~] Profil/progression/digest opérationnels multi-tenant — reste : digest optionnel/agent LLM en prod
 - [ ] (v2 only) service puzzles lichess — PAS avant la v1
 
 ### Phase 3 — Refonte pages
@@ -79,7 +79,28 @@ Navigateur (PWA React)          VPS
 > Caddy host route `/api/*` **directement** vers `127.0.0.1:8001` (API publiée sur le host),
 > le reste vers `127.0.0.1:8080` (web statique). nginx entièrement retiré.
 > Backup : `scripts/backup-db.sh` (snapshot cohérent via sqlite3 Python depuis le conteneur api,
-> rétention 14 jours). Admin prod = `admin@chesscoach.io` (même credentials qu'en dev).
+> rétention 14 jours, cron 3h30).
+> Auth prod : `JWT_SECRET`/`COOKIE_SECURE`/`BASE_URL`/`ALLOW_REGISTRATION=false`/`SEED_ADMIN_PASSWORD`
+> via `.env` (gitignored). Admin prod recréé au démarrage par le seed si absent
+> (`is_verified`/`is_superuser` forcés au constructeur — fix `exclude_unset`).
+
+## Solide arrivé sur la prod le 08/09 (recommandations appliquées)
+- **Sécurité** : mot de passe admin prod régénéré (seed + env, plus jamais de SQL direct), seed
+  force désormais `is_verified`/`is_superuser`, inscription publique fermée en prod
+  (`ALLOW_REGISTRATION=false` → 404), `JWT_SECRET` en dur retiré du code (env prod), cookie secure.
+- **Robustesse local-first** :
+  - `web/src/lib/local/sync.ts` : `drainSyncQueue()` + `autoSync()` — resync automatique de la file
+    au montage et au retour réseau (`navigator.onLine` / événement `online`).
+  - Import : `ply` 1-based envoyé au serveur (aligné sur les parties natives ; internes locaux
+    restent 0-based), `winprob_loss` inclus dans retrySync/drain → `acpl` désormais calculé (E2E : 32.5).
+
+## TO-DO (recommandations restantes) — à faire plus tard
+- [ ] **3. Qualité/repro** : E2E intégré au repo (`scripts/e2e/`) hors `/tmp`, healthcheck
+      (`/api/health` + check Caddy), test d'un vrai import URL chess.com en prod.
+- [ ] **4. Produit** : rotation espacée de l'entraînement, filtres cadence/gravité,
+      groupe par jour / cartes enrichies, CTA « Analyser ma dernière partie », sélecteur période.
+- [ ] **5. Ops** : runbook opérations détaillé dans README, surveillance alertes (uptime),
+      migration du mot de passe seed en vault si multi-opérateurs.
 
 ## Plan de refactor backend (P0) — constat d'exploration
 > Conclu le 07/09 pendant la phase 0. Source de vérité : code lu (db.py, main.py, config.py, schemas.py,

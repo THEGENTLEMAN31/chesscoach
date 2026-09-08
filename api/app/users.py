@@ -151,10 +151,16 @@ async def ensure_seed_user(db: aiosqlite.Connection) -> None:
         is_verified: bool = True
 
     assert _sessionmaker is not None, "init_user_engine() doit être appelé au démarrage"
+    # Note : flags passés au CONSTRUCTEUR (pas juste en defaults de la classe) :
+    # create_update_dict_superuser() est `model_dump(exclude_unset=True)` et un
+    # default n'est pas "set" → il serait exclu du dict envoyé à la DB.
     create = _AdminCreate(
         email=settings.seed_admin_email,
         password=settings.seed_admin_password,
         chesscom_username=settings.seed_admin_chesscom,
+        is_superuser=True,
+        is_active=True,
+        is_verified=True,
     )
     async with _sessionmaker() as session:
         manager = UserManager(SQLAlchemyUserDatabase(session, User))

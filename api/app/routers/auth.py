@@ -44,6 +44,8 @@ async def register(
     request: Request,
     user_manager: BaseUserManager = Depends(get_user_manager),
 ) -> UserRead:
+    if not settings.allow_registration:
+        raise HTTPException(404, "l'inscription est fermée")
     # --- pseudo chess.com doit exister (PubAPI, sans clé) ---
     chesscom: ChessComClient = request.app.state.chesscom
     pseudo = user_create.chesscom_username.strip()

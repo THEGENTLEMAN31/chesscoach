@@ -10,6 +10,11 @@ services:
       - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL:-}
       - LLM_ENABLED=${LLM_ENABLED:-false}
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-me}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - BASE_URL=${BASE_URL:-https://chesscoach.btj.mooo.com}
+      - SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD:-}
+      - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-true}
     ports:
       # publié sur le host pour que Caddy (host) proxifie /api/ directement
       - "127.0.0.1:8001:8001"

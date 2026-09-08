@@ -27,6 +27,7 @@ import {
   type LocalGameMeta,
 } from "../lib/local/repo";
 import { useSession } from "../lib/session";
+import { autoSync, drainSyncQueue } from "../lib/local/sync";
 
 type Mode = "" | "pgn" | "url";
 
@@ -53,6 +54,8 @@ export default function ImportPage() {
 
   useEffect(() => {
     void refreshLocal();
+    void drainSyncQueue().then(() => void refreshLocal()).catch(() => void refreshLocal());
+    return autoSync(() => void refreshLocal());
   }, [refreshLocal]);
 
   const runImport = async (source: "pgn" | "url") => {
@@ -150,9 +153,9 @@ export default function ImportPage() {
         chesscom_id: g.chesscom_id,
         rules: "chess",
         plies: game.plies.map((p) => ({
-          ply: p.ply,
-          move_number: p.ply % 2 === 0 ? p.ply / 2 + 1 : (p.ply + 1) / 2,
-          color: p.ply % 2 === 0 ? "w" : "b",
+          ply: p.ply + 1,
+          move_number: Math.ceil((p.ply + 1) / 2),
+          color: (p.ply + 1) % 2 === 1 ? "w" : "b",
           san: p.san,
           uci: p.uci,
           fen_before: p.fen_before,
@@ -164,6 +167,7 @@ export default function ImportPage() {
           best_move_uci: p.best_move,
           best_move_san: p.best_move_san,
           cp_loss: p.cp_loss,
+          winprob_loss: p.winprob_loss,
           classification: p.classification,
           clk: p.clk,
           time_taken: p.time_taken,

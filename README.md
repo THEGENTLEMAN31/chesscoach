@@ -81,6 +81,38 @@ Voir `.env.example` :
 
 Réglages supplémentaires dans `api/app/config.py` : profondeur d'analyse par format, taille de lot du worker, intervalle de sync automatique, décalage horaire du joueur.
 
+Variables d'auth (prod) :
+
+| Variable | Défaut | Rôle |
+| --- | --- | --- |
+| `JWT_SECRET` | `dev-secret-change-me` | Secret de session — **à changer en prod** (`openssl rand -hex 32`) |
+| `COOKIE_SECURE` | `false` | `true` derrière TLS (Caddy) |
+| `BASE_URL` | `http://localhost:8080` | URL publique (liens, cookie) |
+| `ALLOW_REGISTRATION` | `true` | `false` en prod (mono-pseudo) |
+| `SEED_ADMIN_PASSWORD` | — | Recrée l'admin `admin@chesscoach.io` au démarrage si absent (env prod) |
+
+---
+
+## Déploiement & ops (VPS, Caddy)
+
+- **Reverse proxy** : Caddy host (`/etc/caddy/Caddyfile`), TLS Let's Encrypt auto. `chesscoach.btj.mooo.com`
+  route `/api/*` → `127.0.0.1:8001` (API), le reste → `127.0.0.1:8080` (web statique Caddy, fallback SPA).
+- **Images** : web = caddy:2-alpine ; api/analyzer = FastAPI.
+- **Backup SQLite** : `scripts/backup-db.sh [dir]` (snapshot cohérent depuis le conteneur api,
+  rétention 14 j). Cron ajouté : `30 3 * * *` (chaque nuit à 3h30).
+- **Resync locale** : la file `sync_queue` se vide automatiquement au montage et au retour réseau
+  (`web/src/lib/local/sync.ts`), puis via le bouton « Sync ».
+
+### Redéploiement
+
+```bash
+cd /home/gentleman31/chesscoach
+git pull origin v2
+docker compose up -d --build        # rebuild api (seed admin) + web
+caddy reload --config /etc/caddy/Caddyfile   # si Caddyfile changé
+scripts/backup-db.sh                # snapshot avant toute manip SQL
+```
+
 ---
 
 ## Synchronisation & analyse
@@ -137,10 +169,14 @@ chesscoach/
 │   └── app/engine.py
 ├── web/                    # Frontend React (Vite + TypeScript)
 │   └── src/
-│       ├── pages/          # Dashboard, Profil, Progression, Pratique, Parties, Revue, Coach, Paramètres
+│       ├── pages/          # Dashboard, Profil, Progression, Pratique, Parties, Revue, Coach, Paramètres, Import
 │       ├── components/     # Chat, courbe d'évaluation…
+│       ├── lib/engine/     # Moteur Stockfish WASM (worker + hooks)
+│       ├── lib/local/      # SQLite local (sql.js) + IndexedDB, repo, import, sync auto
+│       ├── lib/shared/     # Portage TS d'éval/concepts (coeur commun client/serveur)
 │       ├── board.ts        # Aide au clic (coups légaux, tryPlay)
 │       └── settings.ts     # Réglages locaux (localStorage)
+├── scripts/                 # backup-db.sh, vendor-engine.mjs…
 ├── data/                   # SQLite + cache (non versionné)
 └── docker-compose.yml
 ```

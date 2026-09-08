@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     seed_admin_email: str = "admin@chesscoach.io"
     seed_admin_chesscom: str = "thegentleman31"
 
+    # Inscription publique (pseudo chess.com vérifié). True en dev ; à passer
+    # False en prod pour rester mono-pseudo (thegentleman31).
+    allow_registration: bool = True
+
     @property
     def db_dir(self) -> Path:
         return Path(self.db_path).parent

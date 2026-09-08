@@ -422,7 +422,7 @@ export function toServerPayload(meta: ImportMeta, rows: Omit<LocalPlyRow, "game_
     rules: meta.rules,
     chesscom_id: meta.chesscomId,
     plies: rows.map((r) => ({
-      ply: r.ply,
+      ply: r.ply + 1,
       move_number: r.move_number,
       color: r.color,
       san: r.san,
