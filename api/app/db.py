@@ -15,7 +15,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -188,6 +188,12 @@ MIGRATIONS: dict[int, str] = {
     ALTER TABLE profile_history ADD COLUMN time_class TEXT NOT NULL DEFAULT 'global';
     CREATE INDEX IF NOT EXISTS idx_profile_history_user_class
         ON profile_history(username, time_class, computed_at);
+    """,
+    6: """
+    -- V2 multi-tenant : les digests appartiennent à un utilisateur.
+    ALTER TABLE digests ADD COLUMN username TEXT;
+    UPDATE digests SET username='thegentleman31' WHERE username IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_digests_user ON digests(username, period);
     """,
 }
 

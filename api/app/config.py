@@ -46,6 +46,20 @@ class Settings(BaseSettings):
     # Profil : décalage horaire du joueur (pour l'analyse "soirée")
     profile_tz_offset_h: int = 2
 
+    # ------------------------------------------------------------- auth (V2)
+    jwt_secret: str = "dev-secret-change-me"   # à surcharger via env en prod
+    session_lifetime_s: int = 60 * 60 * 24 * 14  # 14 jours
+    cookie_name: str = "chesscoach"
+    cookie_secure: bool = False  # True derrière TLS en prod
+    base_url: str = "http://localhost:8080"   # liens de vérification email
+    verify_email: bool = False  # vérification email (Resend) — à activer
+    resend_key: str | None = None
+
+    # Seed admin : compte d'accès à la data historique (data réelle thegentleman31).
+    seed_admin_password: str | None = None
+    seed_admin_email: str = "admin@chesscoach.io"
+    seed_admin_chesscom: str = "thegentleman31"
+
     @property
     def db_dir(self) -> Path:
         return Path(self.db_path).parent

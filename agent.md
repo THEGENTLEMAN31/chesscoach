@@ -70,6 +70,43 @@ Navigateur (PWA React)          VPS
 - [ ] Déploiement VPS docker-compose (api + analyzer + web) + backup SQLite
 - [ ] Validation visuelle + go production
 
+## Plan de refactor backend (P0) — constat d'exploration
+> Conclu le 07/09 pendant la phase 0. Source de vérité : code lu (db.py, main.py, config.py, schemas.py,
+> chesscom.py, services/{manager,sync}.py, agent/{data_service,profile,digest}.py, eval.py, concepts.py,
+> openings.py, pgn.py, analysis_client.py, engine.py, docker-compose.yml).
+
+**Constat clé** : les pseudos chess.com sont globalement uniques → si `users.chesscom_username` est UNIQUE et
+dérivé de la session (jamais du client), la colonne `username` existante scope déjà les données. **Pas besoin
+de colonnes `user_id` partout ni de migration lourde des 320k plis** (pas de sur-ingénierie). Trust boundary =
+tout endpoint remplace son paramètre `username` par `current_user.chesscom_username`.
+
+Schéma multi-tenant minimal :
+- Table `users` gérée par fastapi-users (adapter SQLAlchemy async → moteur `sqlite+aiosqlite` sur le même
+  fichier, coexistence avec l'aiosqlite brut OK en WAL). Colonge `chesscom_username TEXT NOT NULL UNIQUE`.
+- Migration v6 : créer `users` (si absent — table SQLAlchemy) ; commerce/backfill : à l'init, s'il existe des
+  parties `username='thegentleman31'` et aucun `users` → auto-créer un compte admin `thegentleman31` (mot de
+  passe via env `SEED_ADMIN_PASSWORD`, défaut interdit en prod) puis rien d'autre à migrer (schema data inchangé).
+- `sync_runs` / `studied_positions` restent scopés par le pseudo (unique). `players` = pseudos analysés, inchangé.
+
+Routage (refactor de `main.py`, 463 lignes mono-routage) :
+- `routers/auth.py` : router fastapi-users (cookie transport JWT httpOnly, argon2) + hook vérif pseudo chess.com
+  (appel `chesscom.get_player(pseudo)` à l'inscription : le pseudo doit exister sur chess.com). Resend pour vérif email.
+- `routers/games.py` (+`/pgn`), `routers/stats.py`, `routers/profile.py`, `routers/sync.py`, `routers/training.py`
+  (ex-/api/exercices,/api/moves,/api/etudes → futur Entraînement puzzles), `routers/digest.py`.
+- `main.py` : projection légère, dépendance `CurrentUser` (fastapi-users `current_user`), lance workers.
+
+Suppressions (Coach/LLM) : routes `/api/chat*`, `/api/digest/generate` quand LLM off ? → digest conservé pour le
+Dashboard mais sans LLM (gabarit déterministe seulement) ; agent/{graph,memory,tools,quota}.py = code mort DONC
+resté en place mais inclus dans rien ; `digests`/`llm_usage`/`coach_memory` utilisés par digest/usage → digest garde
+`digests`, les autres dorment. Chat frontend supprimé.
+
+Endpoints scoping : `list_games`, `stats`, `profile*`, `moves`, `exercices`, `etudes*` lisent `current_user`;
+`POST /api/sync` utilisera `current_user` (username non accepté du client) ; `GET /api/sync/status` idem.
+Session requise partout (sauf health + auth). `sync_runs.username` alimenté depuis le pseudo de session.
+
+À vérifier sinon : le worker/autosync démarre par pseudo de session au login (pas de `settings.coach_username`
+global sauf pour l'admin/seed).
+
 ## Commandes de dev / test
 > Node est dans `/home/gentleman31/node/bin` (v22.16) — pas sur le PATH système.
 > Python 3.13.5 système. Docker + compose disponibles. Pas de sudo sans mot de passe.

@@ -4,9 +4,7 @@ pydantic
 pydantic-settings
 python-chess
 aiosqlite
+sqlalchemy
 httpx
-sse-starlette
-langgraph
-langgraph-checkpoint-sqlite
-langchain-core
-langchain-openai
+fastapi-users[sqlalchemy]
+python-multipart
