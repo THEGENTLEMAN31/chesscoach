@@ -104,6 +104,14 @@ export const ChevronRightIcon = (p: P) => (
   </svg>
 );
 
+export const DownloadIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 3v12" />
+    <path d="m7 10 5 5 5-5" />
+    <path d="M5 21h14" />
+  </svg>
+);
+
 export const BookIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />

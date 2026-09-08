@@ -74,6 +74,11 @@ Navigateur (PWA React)          VPS
 - [ ] Déploiement VPS docker-compose (api + analyzer + web) + backup SQLite
 - [ ] Validation visuelle + go production
 
+> **Déploiement = Caddy** (pas nginx) : reverse proxy avec TLS/Let's Encrypt automatique
+> (`tls domain` inline), un seul bloc pour statique + API, container officiel `caddy:2`.
+> Pas de nginx/certbot/cron de renouvellement. README/Dockerfile web encore sur nginx :
+> à migrer Caddy lors de la Phase 4.
+
 ## Plan de refactor backend (P0) — constat d'exploration
 > Conclu le 07/09 pendant la phase 0. Source de vérité : code lu (db.py, main.py, config.py, schemas.py,
 > chesscom.py, services/{manager,sync}.py, agent/{data_service,profile,digest}.py, eval.py, concepts.py,

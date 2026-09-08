@@ -41,7 +41,14 @@ export default defineConfig({
         ],
       },
 workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,woff2}"],
+        globPatterns: [
+          "assets/**/*.{js,css,woff2}",
+          "index.html",
+          "favicon.svg",
+          "icon.svg",
+          "icon-maskable.svg",
+          "manifest.webmanifest",
+        ],
         navigateFallbackDenylist: [/^\/api/],
       },
     }),

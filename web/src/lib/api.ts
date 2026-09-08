@@ -6,6 +6,7 @@ import type {
   Exercise,
   GameDetail,
   GamesPage,
+  GameOut,
   MoveOut,
   Stats,
   SyncStatus,
@@ -136,4 +137,11 @@ export const api = {
     }),
 
   syncStatus: () => request<SyncStatus>("/api/sync/status"),
+
+  /** Envoie une partie analysée localement (local-first, P1). */
+  acceptImport: (payload: Record<string, unknown>) =>
+    request<GameOut>(`/api/sync/accept`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 };

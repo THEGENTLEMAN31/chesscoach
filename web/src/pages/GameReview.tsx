@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { Arrow, CustomSquareStyles } from "react-chessboard/dist/chessboard/types";
 import { Chess, type Square } from "chess.js";
 import { Board } from "../components/Board";
 import EvalCurve from "../components/EvalCurve";
+import EvalBar from "../components/EvalBar";
 import MoveList from "../components/MoveList";
 import { Button, Card } from "../components/ui";
 import { api } from "../lib/api";
@@ -14,8 +15,10 @@ import {
   tryPlay,
   type Promo,
 } from "../lib/game/board";
+import { playerWinProb } from "../lib/game/eval";
 import type { Settings } from "../lib/game/settings";
 import { loadSettings } from "../lib/game/settings";
+import { useAnalyse } from "../lib/engine/use-engine";
 import { useSession } from "../lib/session";
 import type { GameDetail, PlyOut } from "../lib/types";
 import { ChevronRightIcon } from "../components/icons";
@@ -23,6 +26,13 @@ import { ChevronRightIcon } from "../components/icons";
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 type Mode = "engine" | "quiz";
+
+interface LiveEval {
+  key: string;
+  cp: number | null;
+  best: string | null;
+  bestSan: string | null;
+}
 
 export default function GameReview() {
   const { id } = useParams();
@@ -41,6 +51,13 @@ export default function GameReview() {
   const [clickSquare, setClickSquare] = useState<Square | null>(null);
   const [pendingPromo, setPendingPromo] = useState<{ from: Square; to: Square } | null>(null);
   const [settings] = useState<Settings>(loadSettings);
+  const { state: engineState, analyse } = useAnalyse();
+  const [live, setLive] = useState<LiveEval | null>(null);
+  const [localBest, setLocalBest] = useState<Record<number, string>>({});
+  const liveCache = useRef(new Map<string, LiveEval>());
+  const localBestCache = useRef(new Map<number, string>());
+
+  const isLocal = !/^\d+$/.test(id ?? "");
 
   useEffect(() => {
     setGame(null);
@@ -55,16 +72,24 @@ export default function GameReview() {
     setPendingPromo(null);
     setQuizScore({ correct: 0, matched: 0, total: 0 });
     const plyParam = Number(params.get("ply"));
-    api
-      .game(id!)
-      .then((g) => {
-        setGame(g);
-        if (Number.isFinite(plyParam) && g.plies.some((p) => p.ply === plyParam)) {
-          setSelected(plyParam);
-        }
-      })
-      .catch((e) => setError(String(e)));
-  }, [id, params]);
+    const apply = (g: GameDetail) => {
+      setGame(g);
+      if (Number.isFinite(plyParam) && g.plies.some((p) => p.ply === plyParam)) {
+        setSelected(plyParam);
+      }
+    };
+    if (isLocal) {
+      import("../lib/local/repo")
+        .then((m) => m.getLocalGameDetail(id!))
+        .then((g) => (g ? apply(g) : setError("Partie locale introuvable")))
+        .catch((e) => setError(String(e)));
+    } else {
+      api
+        .game(id!)
+        .then(apply)
+        .catch((e) => setError(String(e)));
+    }
+  }, [id, params, isLocal]);
 
   const quizPlies = useMemo(() => {
     if (!game) return [] as PlyOut[];
@@ -94,6 +119,54 @@ export default function GameReview() {
   }, [baseFen]);
 
   const position = boardFen ?? baseFen;
+
+  const liveKey = mode === "engine" ? `e:${position}` : `q:${quizPly?.ply ?? ""}:${position}`;
+
+  useEffect(() => {
+    if (!engineState.ready || mode !== "engine") return;
+    const cached = liveCache.current.get(liveKey);
+    if (cached) {
+      setLive(cached);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      analyse(position, { movetime: 700, depth: 12 }).then((r) => {
+        if (cancelled || !r?.best) return;
+        let bestSan: string | null = null;
+        if (r.pv[0]) {
+          try {
+            const b = new Chess(position);
+            const mv = b.move(r.pv[0]);
+            bestSan = mv.san;
+          } catch {
+            bestSan = null;
+          }
+        }
+        const entry: LiveEval = { key: liveKey, cp: r.cp, best: r.pv[0] ?? null, bestSan };
+        liveCache.current.set(liveKey, entry);
+        setLive(entry);
+      });
+    }, 220);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [liveKey, engineState.ready, mode, position, analyse]);
+
+  useEffect(() => {
+    if (mode !== "quiz" || !revealed || !quizPly || quizPly.best_move) return;
+    if (localBestCache.current.has(quizPly.ply)) return;
+    let cancelled = false;
+    analyse(quizPly.fen_before, { movetime: 800, depth: 15 }).then((r) => {
+      if (cancelled || !r?.best) return;
+      localBestCache.current.set(quizPly.ply, r.best);
+      setLocalBest((m) => ({ ...m, [quizPly.ply]: r.best! }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, revealed, quizPly, analyse]);
 
   const guessSan = useMemo(() => {
     if (!proposed || !quizPly) return null;
@@ -129,6 +202,17 @@ export default function GameReview() {
     return () => window.removeEventListener("keydown", onKey);
   }, [mode, selected, game]);
 
+
+  const localBestSan = useMemo(() => {
+    if (!quizPly || !localBest[quizPly.ply]) return null;
+    try {
+      const b = new Chess(quizPly.fen_before);
+      const mv = b.move(localBest[quizPly.ply]);
+      return mv.san;
+    } catch {
+      return localBest[quizPly.ply];
+    }
+  }, [quizPly, localBest]);
   if (error) {
     return (
       <div className="flex flex-col gap-4">
@@ -180,10 +264,11 @@ export default function GameReview() {
     setBoardFen(res.fen);
     setClickSquare(null);
     if (mode === "quiz" && quizPly) {
+      const bestUci = quizPly.best_move ?? localBestCache.current.get(quizPly.ply) ?? null;
       setQuizScore((s) => ({
         ...s,
         total: s.total + 1,
-        correct: s.correct + (res.uci === quizPly.best_move ? 1 : 0),
+        correct: s.correct + (res.uci === bestUci ? 1 : 0),
         matched: s.matched + (res.uci === quizPly.uci ? 1 : 0),
       }));
       setRevealed(true);
@@ -195,11 +280,11 @@ export default function GameReview() {
           ply: quizPly.ply,
           fen: quizPly.fen_before,
           san: quizPly.san,
-          best_move_uci: quizPly.best_move ?? "",
-          best_move_san: quizPly.best_move_san,
+          best_move_uci: bestUci ?? "",
+          best_move_san: quizPly.best_move_san ?? "",
           concept: quizPly.concept ?? undefined,
           attempt: res.uci,
-          correct: res.uci === quizPly.best_move,
+          correct: res.uci === bestUci,
         })
         .catch(() => {});
     }
@@ -263,7 +348,8 @@ export default function GameReview() {
     setPendingPromo(null);
   };
 
-  const quizAnswer = revealed && proposed ? proposed === quizPly?.best_move : null;
+  const quizAnswer = revealed && proposed ? proposed === (quizPly?.best_move ?? localBest[quizPly.ply] ?? null) : null;
+
 
   const back = (
     <button
@@ -381,6 +467,37 @@ export default function GameReview() {
                 </button>
               </div>
             )}
+            {mode === "engine" && (
+              <div className="mt-3">
+                {engineState.failed ? (
+                  <p className="text-xs text-muted">
+                    Moteur local indisponible (WASM non chargé). Évaluation serveur
+                    uniquement.
+                  </p>
+                ) : (
+                  <>
+                    <EvalBar
+                      wp={
+                        live?.cp != null
+                          ? playerWinProb({ cp: live.cp, mate: null }, game.player_color)
+                          : null
+                      }
+                      label={
+                        engineState.ready
+                          ? `${(live?.cp ?? 0) / 100 >= 0 ? "+" : ""}${((live?.cp ?? 0) / 100).toFixed(1)}`
+                          : "moteur…"
+                      }
+                    />
+                    <p className="mt-1 text-xs text-muted">
+                      Évaluation par le moteur local (WASM).
+                      {!ply?.best_move_san && live?.bestSan ? (
+                        <> Coup suggéré : <b className="text-ink">{live.bestSan}</b></>
+                      ) : null}
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
             <div className="mt-3 flex items-center justify-between gap-2">
               {mode === "engine" ? (
                 <>
@@ -479,7 +596,7 @@ export default function GameReview() {
                           Coup joué : <b className="text-ink">{quizPly?.san}</b>
                         </p>
                         <p>
-                          Coup du moteur : <b className="text-ink">{quizPly?.best_move_san ?? "—"}</b>
+                          Coup du moteur : <b className="text-ink">{quizPly?.best_move_san ?? localBestSan ?? "—"}</b>
                         </p>
                         {quizPly?.concept && (
                           <p className="text-xs text-accent">

@@ -4,6 +4,7 @@ import { useSession } from "../lib/session";
 import { currentTheme, setTheme } from "../lib/theme";
 import {
   ChartIcon,
+  DownloadIcon,
   GridIcon,
   KnightIcon,
   ListIcon,
@@ -20,6 +21,7 @@ const NAV = [
   { to: "/games", label: "Parties", icon: ListIcon },
   { to: "/training", label: "Entraînement", icon: TargetIcon },
   { to: "/progression", label: "Progression", icon: ChartIcon },
+  { to: "/import", label: "Importer", icon: DownloadIcon },
   { to: "/profile", label: "Profil", icon: UserIcon },
 ];
 
