@@ -327,6 +327,28 @@ export default function Training() {
                 {exercise.end_time ? ` · ${formatDate(exercise.end_time)}` : ""}
               </p>
 
+              {exercise.line && exercise.line.length > 0 ? (
+                <div className="mt-1">
+                  <h2 className="text-sm font-semibold tracking-tight">Suite de la partie</h2>
+                  <ul className="mt-1.5 flex flex-col gap-1">
+                    {exercise.line.map((m, i) => (
+                      <li key={i} className="flex items-center justify-between gap-2 text-sm">
+                        <span>
+                          <span className="text-muted">({i + 1})</span>{" "}
+                          <b className="text-ink">{m.san}</b>
+                        </span>
+                        <span className="text-xs text-muted">
+                          meilleur : <b className="text-accent">{m.best_move_san ?? "—"}</b>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1 text-xs text-muted">
+                    Rejoue toute la séquence pour mieux la mémoriser.
+                  </p>
+                </div>
+              ) : null}
+
               {!revealed ? (
                 <>
                   <h2 className="text-sm font-semibold tracking-tight">Trouve le coup</h2>

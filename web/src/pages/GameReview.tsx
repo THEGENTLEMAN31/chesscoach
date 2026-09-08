@@ -5,6 +5,7 @@ import { Chess, type Square } from "chess.js";
 import { Board } from "../components/Board";
 import EvalCurve from "../components/EvalCurve";
 import EvalBar from "../components/EvalBar";
+import VariantsPanel from "../components/VariantsPanel";
 import MoveList from "../components/MoveList";
 import { Button, Card } from "../components/ui";
 import { api } from "../lib/api";
@@ -51,7 +52,7 @@ export default function GameReview() {
   const [clickSquare, setClickSquare] = useState<Square | null>(null);
   const [pendingPromo, setPendingPromo] = useState<{ from: Square; to: Square } | null>(null);
   const [settings] = useState<Settings>(loadSettings);
-  const { state: engineState, analyse } = useAnalyse();
+  const { engine, state: engineState, analyse } = useAnalyse();
   const [live, setLive] = useState<LiveEval | null>(null);
   const [localBest, setLocalBest] = useState<Record<number, string>>({});
   const liveCache = useRef(new Map<string, LiveEval>());
@@ -547,6 +548,20 @@ export default function GameReview() {
           <div className="flex flex-col gap-4">
             {mode === "engine" ? (
               <>
+                <Card>
+                  <VariantsPanel
+                    fen={position}
+                    playerColor={game.player_color}
+                    engine={engine}
+                    engineReady={engineState.ready}
+                    onPlay={(uci, _san, fen) => { void _san;
+                      setBoardFen(fen);
+                      setProposed(uci);
+                      setClickSquare(null);
+                      setPendingPromo(null);
+                    }}
+                  />
+                </Card>
                 <Card>
                   <EvalCurve game={game} />
                 </Card>

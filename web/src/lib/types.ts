@@ -126,6 +126,12 @@ export interface Exercise {
   end_time: number | null;
   opening_name: string | null;
   eco: string | null;
+  line?: {
+    san: string | null;
+    fen_before: string | null;
+    best_move_uci: string | null;
+    best_move_san: string | null;
+  }[];
 }
 
 export interface MoveOut {

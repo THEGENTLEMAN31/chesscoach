@@ -235,7 +235,36 @@ async def exercices(db: aiosqlite.Connection, username: str, limit: int = 6,
     rows.sort(key=lambda r: r["_score"], reverse=True)
     for r in rows:
         r.pop("_score", None)
-    return rows[:limit]
+    rows = rows[:limit]
+
+    # Multi-coups : pour chaque exercice, la suite de la partie (fen + san + meilleur coup)
+    # sur 3 plis, pour pouvoir rejouer une SÉQUENCE et pas un seul coup.
+    if rows:
+        by_game: dict[int, list[dict]] = {}
+        gids = list({r["game_id"] for r in rows})
+        gsel = ",".join("?" * len(gids))
+        cur = await db.execute(
+            f"""SELECT game_id, ply, san, uci, fen_before, best_move_uci,
+                       best_move_san, is_player
+                FROM plies WHERE game_id IN ({gsel})
+                ORDER BY game_id, ply""",
+            gids,
+        )
+        for pr in (dict(x) for x in await cur.fetchall()):
+            by_game.setdefault(pr["game_id"], []).append(pr)
+        for r in rows:
+            seq = [q for q in by_game.get(r["game_id"], []) if q["ply"] > r["ply"]][:3]
+            r["line"] = [
+                {
+                    "san": q["san"],
+                    "fen_before": q["fen_before"],
+                    "best_move_uci": q["best_move_uci"],
+                    "best_move_san": q["best_move_san"],
+                    "is_player": q.get("is_player", 0),
+                }
+                for q in seq
+            ]
+    return rows
 
 
 async def recent_moves(

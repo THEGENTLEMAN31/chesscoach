@@ -108,18 +108,28 @@ Navigateur (PWA React)          VPS
   - Import : `ply` 1-based envoyé au serveur (aligné sur les parties natives ; internes locaux
     restent 0-based), `winprob_loss` inclus dans retrySync/drain → `acpl` désormais calculé (E2E : 32.5).
 
+## Passe UX 09/09 — faite (commit 1de65a1)
+- Nav : 6→5 items (Tableaux/Parties/Entraînement/Progression/Profil), Importer via bouton Parties, Réglages dispo mobile
+- Typologie chess.com (Gaffe au lieu de Bévue, Coup optimal/théorique…)
+- EvalBar : jauge verticale à droite de l'échiquier
+- Settings étendus (flèches joué/meilleur, enchaîner exercices)
+- Progression : légende départ/actuel/max/min + dates + axe X
+- Profil : Concepts à travailler + Causes racines
+- Training : sélecteur concepts → chips compactes
+- E2E prod : nav 5 mobile ✓, réglages mobile ✓, Gaffe ✓, profil enrichi ✓
+
 ## TO-DO (recommandations restantes) — à faire plus tard
+- [x] **Explorateur de variantes** (feedback 09/09) : lister les coups légaux de la position en
+      exploration libre avec l'évaluation moteur de chacun (« et si je joue X ? »). ✅ implémenté
+- [x] **Entraînements multi-coups** (feedback 09/09) : ne pas limiter les exercices à un seul coup —
+      générer des variantes sur plusieurs coups (séquences / arbres de décision). ✅ implémenté
 - [ ] **3. Qualité/repro** : E2E intégré au repo (`scripts/e2e/`) hors `/tmp`, healthcheck
       (`/api/health` + check Caddy), test d'un vrai import URL chess.com en prod.
 - [ ] **4. Produit** : rotation espacée de l'entraînement, filtres cadence/gravité,
       groupe par jour / cartes enrichies, CTA « Analyser ma dernière partie », sélecteur période.
 - [ ] **5. Ops** : runbook opérations détaillé dans README, surveillance alertes (uptime),
       migration du mot de passe seed en vault si multi-opérateurs.
-- [ ] **Explorateur de variantes** (feedback 09/09) : lister les coups légaux de la position en
-      exploration libre avec l'évaluation moteur de chacun (pommes « et si je joue X ? »).
-- [ ] **Entraînements multi-coups** (feedback 09/09) : ne pas limiter les exercices à un seul coup —
-      générer des variantes sur plusieurs coups (séquences / arbres de décision), pas seulement un cas.
-- [ ] **Objectif personnel modifiable** (feedback 09/09) : pointer un endpoint serveur pour définir
+- [ ] **Objectif personnel modifiable** (feedback 09/09) : endpoint serveur pour définir
       son propre objectif Elo (aujourd'hui cible serveur ELO_TARGETS en lecture seule).
 - [ ] **Pages encore minces** : Dashboard/Parties/entraînement à enrichir davantage au fil des usages
       (indicateurs de forme, groupement par jour, panneau MultiPV en review).
