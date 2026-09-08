@@ -112,16 +112,32 @@ export default function Settings() {
         </button>
       </Card>
 
-      {["clickToMove", "showLegalMoves"].map((key) => (
+      {["clickToMove", "showLegalMoves", "showPlayedArrow", "showBestArrow", "autoNextQuiz"].map((key) => (
         <Card key={key}>
           <Toggle
             checked={game[key as keyof GameSettings] as boolean}
             onChange={(v) => patchGame({ [key]: v })}
-            label={key === "clickToMove" ? "Clic pour jouer" : "Montrer les coups légaux"}
+            label={
+              key === "clickToMove"
+                ? "Clic pour jouer"
+                : key === "showLegalMoves"
+                  ? "Montrer les coups légaux"
+                  : key === "showPlayedArrow"
+                    ? "Flèche du coup joué"
+                    : key === "showBestArrow"
+                      ? "Flèche du meilleur coup"
+                      : "Enchaîner les exercices"
+            }
             hint={
               key === "clickToMove"
                 ? "Cliquer une pièce puis la case d'arrivée (sinon, glisser-déposer)."
-                : "Afficher les cases d'arrivée possibles sur l'échiquier."
+                : key === "showLegalMoves"
+                  ? "Afficher les cases d'arrivée possibles sur l'échiquier."
+                  : key === "showPlayedArrow"
+                    ? "Sur l'échiquier, montrer la flèche du coup réellement joué."
+                    : key === "showBestArrow"
+                      ? "Montrer la flèche du meilleur coup calculé par le moteur."
+                      : "Passer automatiquement au coup suivant après révélation."
             }
           />
         </Card>

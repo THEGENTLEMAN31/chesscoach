@@ -108,6 +108,35 @@ export default function Profile() {
               </ul>
             </Card>
           ) : null}
+          {profile.concepts_missing && profile.concepts_missing.length > 0 ? (
+            <Card className="col-span-2">
+              <h2 className="text-sm font-medium text-muted">Concepts à travailler</h2>
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {profile.concepts_missing.map((c, i) => (
+                  <li key={i} className="flex items-baseline justify-between gap-2 text-sm">
+                    <span>{c.label}</span>
+                    <span className="text-muted text-xs tabular-nums">
+                      {c.n} coup{c.n > 1 ? "s" : ""}
+                      {c.blunders > 0 ? ` · ${c.blunders} gaffe${c.blunders > 1 ? "s" : ""}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
+          {profile.root_causes && profile.root_causes.length > 0 ? (
+            <Card className="col-span-2">
+              <h2 className="text-sm font-medium text-muted">Causes racines</h2>
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {profile.root_causes.map((c, i) => (
+                  <li key={i} className="flex items-baseline justify-between gap-2 text-sm">
+                    <span>{c.label}</span>
+                    <span className="text-muted text-xs tabular-nums">{Math.round(c.share * 100)}%</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
         </div>
       ) : (
         <p className="text-sm text-muted">Profil indisponible — lance une synchronisation puis un recalcul.</p>

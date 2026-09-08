@@ -247,10 +247,10 @@ export default function GameReview() {
 
   const arrows: Arrow[] = [];
   const reveal = mode === "quiz" ? revealed : true;
-  if (reveal && bestFrom && bestTo) {
+  if (reveal && bestFrom && bestTo && settings.showBestArrow) {
     arrows.push([bestFrom as Arrow[0], bestTo as Arrow[1], "#2f7cd6"]);
   }
-  if (reveal && playedFrom && playedTo && displayPly?.classification && displayPly.classification !== "book") {
+  if (reveal && playedFrom && playedTo && settings.showPlayedArrow && displayPly?.classification && displayPly.classification !== "book") {
     const c = CLASS_COLOR[displayPly.classification] ?? "#8f97a1";
     arrows.push([playedFrom as Arrow[0], playedTo as Arrow[1], c]);
   }
@@ -437,23 +437,43 @@ export default function GameReview() {
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
           <Card>
-            <Board
-              fen={position}
-              orientation={game.player_color === "b" ? "black" : "white"}
-              draggable={mode === "engine" ? true : !revealed}
-              onPieceDrop={onDrop}
-              onSquareClick={onSquareClick}
-              arrows={arrows}
-              squareStyles={squareStyles}
-              selected={clickSquare}
-              pendingPromo={pendingPromo}
-              onPromo={(p) => {
-                if (!pendingPromo) return;
-                const { from, to } = pendingPromo;
-                setPendingPromo(null);
-                playGuess(from, to, p);
-              }}
-            />
+            <div className="flex items-start justify-center gap-3">
+              <div className="min-w-0 flex-1">
+              <Board
+                fen={position}
+                orientation={game.player_color === "b" ? "black" : "white"}
+                draggable={mode === "engine" ? true : !revealed}
+                onPieceDrop={onDrop}
+                onSquareClick={onSquareClick}
+                arrows={arrows}
+                squareStyles={squareStyles}
+                selected={clickSquare}
+                pendingPromo={pendingPromo}
+                onPromo={(p) => {
+                  if (!pendingPromo) return;
+                  const { from, to } = pendingPromo;
+                  setPendingPromo(null);
+                  playGuess(from, to, p);
+                }}
+              />
+              </div>
+              {mode === "engine" && !engineState.failed && (
+                <div className="shrink-0">
+                  <EvalBar
+                    wp={
+                      live?.cp != null
+                        ? playerWinProb({ cp: live.cp, mate: null }, game.player_color)
+                        : null
+                    }
+                    label={
+                      engineState.ready
+                        ? `${(live?.cp ?? 0) / 100 >= 0 ? "+" : ""}${((live?.cp ?? 0) / 100).toFixed(1)}`
+                        : "…"
+                    }
+                  />
+                </div>
+              )}
+            </div>
             {boardFen && mode === "engine" && (
               <div className="mt-2 flex items-center justify-between gap-2">
                 <p className="text-xs text-muted">
@@ -476,18 +496,6 @@ export default function GameReview() {
                   </p>
                 ) : (
                   <>
-                    <EvalBar
-                      wp={
-                        live?.cp != null
-                          ? playerWinProb({ cp: live.cp, mate: null }, game.player_color)
-                          : null
-                      }
-                      label={
-                        engineState.ready
-                          ? `${(live?.cp ?? 0) / 100 >= 0 ? "+" : ""}${((live?.cp ?? 0) / 100).toFixed(1)}`
-                          : "moteur…"
-                      }
-                    />
                     <p className="mt-1 text-xs text-muted">
                       Évaluation par le moteur local (WASM).
                       {!ply?.best_move_san && live?.bestSan ? (

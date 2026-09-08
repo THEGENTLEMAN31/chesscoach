@@ -115,6 +115,14 @@ Navigateur (PWA React)          VPS
       groupe par jour / cartes enrichies, CTA « Analyser ma dernière partie », sélecteur période.
 - [ ] **5. Ops** : runbook opérations détaillé dans README, surveillance alertes (uptime),
       migration du mot de passe seed en vault si multi-opérateurs.
+- [ ] **Explorateur de variantes** (feedback 09/09) : lister les coups légaux de la position en
+      exploration libre avec l'évaluation moteur de chacun (pommes « et si je joue X ? »).
+- [ ] **Entraînements multi-coups** (feedback 09/09) : ne pas limiter les exercices à un seul coup —
+      générer des variantes sur plusieurs coups (séquences / arbres de décision), pas seulement un cas.
+- [ ] **Objectif personnel modifiable** (feedback 09/09) : pointer un endpoint serveur pour définir
+      son propre objectif Elo (aujourd'hui cible serveur ELO_TARGETS en lecture seule).
+- [ ] **Pages encore minces** : Dashboard/Parties/entraînement à enrichir davantage au fil des usages
+      (indicateurs de forme, groupement par jour, panneau MultiPV en review).
 
 ## Plan de refactor backend (P0) — constat d'exploration
 > Conclu le 07/09 pendant la phase 0. Source de vérité : code lu (db.py, main.py, config.py, schemas.py,

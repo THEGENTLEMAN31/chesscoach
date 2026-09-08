@@ -4,7 +4,6 @@ import { useSession } from "../lib/session";
 import { currentTheme, setTheme } from "../lib/theme";
 import {
   ChartIcon,
-  DownloadIcon,
   GridIcon,
   KnightIcon,
   ListIcon,
@@ -21,7 +20,6 @@ const NAV = [
   { to: "/games", label: "Parties", icon: ListIcon },
   { to: "/training", label: "Entraînement", icon: TargetIcon },
   { to: "/progression", label: "Progression", icon: ChartIcon },
-  { to: "/import", label: "Importer", icon: DownloadIcon },
   { to: "/profile", label: "Profil", icon: UserIcon },
 ];
 
@@ -105,6 +103,13 @@ export default function Layout() {
             {current?.label ?? "ChessCoach"}
           </h1>
           <div className="flex items-center gap-1.5">
+            <NavLink
+              to="/settings"
+              aria-label="Réglages"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted md:hidden transition-colors hover:bg-surface-3 hover:text-ink"
+            >
+              <SettingsIcon className="h-4.5 w-4.5" />
+            </NavLink>
             <button
               onClick={toggleTheme}
               aria-label="Basculer le thème"

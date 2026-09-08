@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { Card, Spinner } from "../components/ui";
+import { Link, useNavigate } from "react-router-dom";
+import { Button, Card, Spinner } from "../components/ui";
 import { api } from "../lib/api";
 import {
   formatDate,
@@ -29,6 +29,7 @@ const ALL_STATUSES = [
 ];
 
 export default function Games() {
+  const navigate = useNavigate();
   const [timeClass, setTimeClass] = useState("");
   const [status, setStatus] = useState("analyzed");
 
@@ -53,7 +54,13 @@ export default function Games() {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          onClick={() => navigate("/import")}
+          className="h-8 px-3 text-xs"
+        >
+          + Importer une partie
+        </Button>
         <div className="flex flex-wrap gap-1 rounded-lg border border-line bg-surface-2 p-1">
           {(["", "rapid", "blitz", "bullet"] as const).map((tc) => (
             <button

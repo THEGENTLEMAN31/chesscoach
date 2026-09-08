@@ -1,10 +1,19 @@
 export const CLASS_LABEL: Record<string, string> = {
-  best: "Coup parfait",
+  best: "Coup optimal",
   good: "Bon coup",
   inaccuracy: "Imprécision",
   mistake: "Erreur",
-  blunder: "Bévue",
-  book: "Théorie",
+  blunder: "Gaffe",
+  book: "Théorique",
+};
+
+export const CLASS_SHORT: Record<string, string> = {
+  best: "Optimal",
+  good: "Bon",
+  inaccuracy: "Imprécision",
+  mistake: "Erreur",
+  blunder: "Gaffe",
+  book: "Théorique",
 };
 
 export const CLASS_COLOR: Record<string, string> = {

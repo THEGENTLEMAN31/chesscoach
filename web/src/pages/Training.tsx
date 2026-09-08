@@ -216,21 +216,35 @@ export default function Training() {
               : " : déplace une pièce sur l'échiquier."}
           </p>
         </div>
-        <select
-          value={concept}
-          onChange={(e) => {
-            setConcept(e.target.value);
-            loadExercises(e.target.value);
-          }}
-          className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent"
-        >
-          <option value="">Tous les concepts</option>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            onClick={() => {
+              setConcept("");
+              loadExercises("");
+            }}
+            className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+              concept === "" ? "border-accent bg-accent text-accent-ink" : "border-line text-muted hover:border-surface-3 hover:text-ink"
+            }`}
+          >
+            Tous
+          </button>
           {CONCEPT_LIST.filter((k) => conceptKeys.includes(k)).map((k) => (
-            <option key={k} value={k}>
+            <button
+              key={k}
+              onClick={() => {
+                setConcept(k);
+                loadExercises(k);
+              }}
+              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                concept === k
+                  ? "border-accent bg-accent text-accent-ink"
+                  : "border-line text-muted hover:border-surface-3 hover:text-ink"
+              }`}
+            >
               {CONCEPT_LABEL[k]}
-            </option>
+            </button>
           ))}
-        </select>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

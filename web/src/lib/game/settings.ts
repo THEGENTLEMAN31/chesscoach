@@ -4,6 +4,9 @@ export interface Settings {
   clickToMove: boolean;
   showLegalMoves: boolean;
   evalDisplay: EvalDisplay;
+  showPlayedArrow: boolean;
+  showBestArrow: boolean;
+  autoNextQuiz: boolean;
 }
 
 const KEY = "chesscoach:settings";
@@ -11,6 +14,9 @@ const DEFAULTS: Settings = {
   clickToMove: true,
   showLegalMoves: true,
   evalDisplay: "cp",
+  showPlayedArrow: true,
+  showBestArrow: true,
+  autoNextQuiz: false,
 };
 
 export function loadSettings(): Settings {

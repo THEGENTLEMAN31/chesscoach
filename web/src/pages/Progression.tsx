@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChartTooltip, Grid, Line, LineChart } from "../components/charts";
+import { ChartTooltip, Grid, Line, LineChart, XAxis } from "../components/charts";
 import { Button, Card, Spinner } from "../components/ui";
 import { api } from "../lib/api";
 import { TIME_CLASS_LABEL } from "../lib/constants";
@@ -112,6 +112,23 @@ export default function Progression() {
         <h2 className="text-sm font-semibold tracking-tight">Courbe Elo</h2>
         {eloData.length >= 2 ? (
           <div className="mt-2">
+            <div className="flex flex-wrap gap-1.5">
+              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
+                Départ : <b className="text-ink">{eloData[0].elo}</b>
+                <span className="text-muted"> ({String(eloData[0].date).slice(0, 10)})</span>
+              </span>
+              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
+                Actuel : <b className="text-ink">{eloData[eloData.length - 1].elo}</b>
+                <span className="text-muted"> ({String(eloData[eloData.length - 1].date).slice(0, 10)})</span>
+              </span>
+              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
+                Max : <b className="text-ink">{Math.max(...eloData.map((p) => Number(p.elo)))}</b>
+              </span>
+              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
+                Min : <b className="text-ink">{Math.min(...eloData.map((p) => Number(p.elo)))}</b>
+              </span>
+            </div>
+            <div className="mt-2">
             <LineChart
               data={eloData}
               xDataKey="date"
@@ -120,6 +137,7 @@ export default function Progression() {
               margin={{ top: 4, right: 8, bottom: 20, left: 8 }}
             >
               <Grid numTicksRows={5} strokeDasharray="3 4" />
+              <XAxis numTicks={6} />
               <Line
                 dataKey="elo"
                 stroke="var(--chart-1)"
@@ -135,6 +153,7 @@ export default function Progression() {
                 ]}
               />
             </LineChart>
+            </div>
           </div>
         ) : (
           <p className="mt-2 text-sm text-muted">

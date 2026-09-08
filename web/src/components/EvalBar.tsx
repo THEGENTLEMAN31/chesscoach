@@ -4,33 +4,35 @@ interface EvalBarProps {
   label?: string;
 }
 
-/** Barre d'avantage horizontale (mobile-first, DA bento). */
+/** Jauge d'avantage verticale (droite de l'échiquier).
+ * Montée = avantage joueur, descente = désavantage ; centre = 50/50. */
 export default function EvalBar({ wp, label }: EvalBarProps) {
-  const pct = wp === null ? 50 : Math.max(-50, Math.min(50, wp - 50));
+  const norm = wp === null ? 50 : Math.max(-50, Math.min(50, wp - 50));
+  const fillPct = Math.abs(norm);
+  const up = norm >= 0;
   return (
-    <div className="select-none">
-      <div className="flex items-center gap-3">
-        <div className="relative h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-3">
+    <div className="flex select-none flex-col items-center gap-1.5">
+      <span className="text-[10px] font-semibold text-muted">+</span>
+      <div className="relative h-28 w-3 overflow-hidden rounded-full bg-surface-3">
+        <div className="absolute inset-0 w-full bg-white/70" style={{ display: "none" }} />
+        {fillPct > 0 && (
           <div
-            className="absolute inset-y-0 left-1/2 w-1/2 rounded-full bg-black/70"
-            style={{ display: "none" }}
+            className="absolute w-full rounded-full bg-white/80 transition-all duration-300"
+            style={
+              up
+                ? { bottom: "50%", height: `${fillPct}%` }
+                : { top: "50%", height: `${fillPct}%` }
+            }
           />
-          <div
-            className="absolute inset-y-0 right-1/2 rounded-r-full bg-white/80 transition-all duration-300"
-            style={{ width: `${Math.max(0, pct)}%`, right: "50%" }}
-          />
-          <div
-            className="absolute inset-y-0 left-1/2 rounded-l-full bg-white/80 transition-all duration-300"
-            style={{ width: `${Math.max(0, -pct)}%`, left: "50%" }}
-          />
-          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-line" />
-        </div>
-        {label !== undefined && (
-          <span className="w-max shrink-0 rounded-md border border-line bg-surface-2 px-2 py-0.5 text-xs tabular-nums text-muted">
-            {label}
-          </span>
         )}
+        <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-line" />
       </div>
+      <span className="text-[10px] font-semibold text-muted">−</span>
+      {label !== undefined && (
+        <span className="w-14 shrink-0 rounded-md border border-line bg-surface-2 px-1 py-0.5 text-center text-[10px] tabular-nums text-muted">
+          {label}
+        </span>
+      )}
     </div>
   );
 }
