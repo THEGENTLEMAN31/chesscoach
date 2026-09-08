@@ -40,10 +40,12 @@ Navigateur (PWA React)          VPS
 - [x] Branch `v2` + historique migré + snapshot POC commité
 - [x] `agent.md` initialisé (ce fichier)
 - [ ] Monorepo : structure `web/`, `api/`, `analyzer/`, `shared/` (types + algos eval/classif)
-- [ ] Backend refactoré : routers par domaine, multi-tenant `user_id`, migrations versionnées
-- [ ] Auth complète : register (vérif pseudo chess.com + email), login/refresh/logout, cookie httpOnly
-- [ ] Design system Tailwind v4 + shadcn/ui + Bklit, PWA shell, DA noir/bento/1 accent, thème clair/sombre
-- [ ] Suppression page Coach (route/composant) + corrections bugs connus (`CLASS_LABEL[concept]`, targets hardcodées, username hardcodé → session user)
+- [x] Backend refactoré : routers par domaine, multi-tenant `user_id`, migrations versionnées
+- [x] Auth complète : register (vérif pseudo chess.com + email à activer), login/refresh/logout, cookie httpOnly
+- [x] Design system (socle) : Tailwind v4 + DA noir profonde/bento/1 accent discret (#6fa8dc), thème clair/sombre, PWA installable (VitePWA)
+- [ ] Design system (suite) : shadcn/ui + composants Bklit UI (remplacement recharts) — pas nécessaires avant la refonte des pages graphiques
+- [~] Coach supprimée (route + Chat/Markdown/EvalCurve/MoveList retirés) + username hardcodé → session user (Scoping UI OK)
+- [ ] Corrections restantes lors du port des pages : `CLASS_LABEL[concept]` (Revue), targets hardcodées (Profil), relecture/puzzles à porter sur le DS
 
 ### Phase 1 — Cœur local-first
 - [ ] `EngineWorker` stockfish.js WASM : analyse incrémentale, barre d'avantage temps réel, MultiPV, profondeur adaptée device
@@ -111,14 +113,55 @@ global sauf pour l'admin/seed).
 > Node est dans `/home/gentleman31/node/bin` (v22.16) — pas sur le PATH système.
 > Python 3.13.5 système. Docker + compose disponibles. Pas de sudo sans mot de passe.
 
+- Backend V2 dev : `python3 -m uvicorn app.main:app --port 8010` (dans `api/`, user-site ~/.local).
+  **Port 8010** : le POC occupe déjà 8001/8002 localement (processus `uvicorn app.main:app` résiduels).
+  Lancer avec `setsid nohup ... </dev/null > log &` sinon le shell opencode attend le process.
+- Auth test : `curl -c c.txt -X POST localhost:8010/api/auth/jwt/login -d "username=admin@chesscoach.io&password=..."`.
 - Frontend dev : `PATH=/home/gentleman31/node/bin:$PATH npm run dev` (dans `web/`)
-- Backend dev : `uvicorn app.main:app --port 8001` (dans `api/`, venv `.venv`)
 - Analyzer dev : `uvicorn app.main:app --port 8002` (dans `analyzer/`)
 - Assertions santé : `python3 - <<'PY' ... PY` / sqlite via python (pas de binaire sqlite3)
-- Vérif data : `POST http://localhost:8001/api/sync` etc.
+- Vérif data : `POST http://localhost:8010/api/sync` etc.
+
+## Session P0 backend — fait le 08/09 (commit 06810e8, poussé origin/v2)
+- Backend refactoré : `main.py` → routers par domaine (`routers/{auth,games,stats,sync,training}.py`),
+  dépendances dans `dependencies.py`, auth dans `users.py` (fastapi-users v15, cookie httpOnly JWT + argon2).
+- Multi-tenant par trust boundary : `chesscom_username` UNIQUE sur `users`, dérivé de la session,
+  identifie toutes les données (pas de requête client). Migration **v6** : `digests.username` (+ index).
+- Inscription : pseudo chess.com vérifié via PubAPI (`get_player`) → 400 si inconnu/déjà pris,
+  email vérifié à activer (`verify_email` + Resend), compte actif direct tant que désactivé.
+- **Seed admin** : `SEED_ADMIN_PASSWORD/EMAIL/CHESSCOM` (idempotent) → compte admin@chesscoach.io/thegentleman31.
+- `SyncManager` réécrit per-user (un run/utilisateur, batch serveur repreneur ; worker global supprimé).
+- Dépendances dev : installées en **user-site ~/.local** (`--break-system-packages`, PEP 668) :
+  aiosqlite, sqlalchemy, python-chess, pydantic-settings, fastapi-users[sqlalchemy], python-multipart.
+  Venv impossible (pas de python3-venv, pas de sudo). `api/.env` (dev, gitignoré) : DB_PATH, JWT_SECRET, seed.
+- Tests passés : login/logout cookie, 401 sans cookie, register pseudo invalide 400 / valide 201,
+  doublons pseudo/email 400, scoping (hikaru→0 parties, thegentleman31→5199), stats/profile/digest/exercices scopés.
+
+## Session web — scaffold V2 (fait le 08/09)
+- Socle `web/` refondu : Vite + React 18 + TS strict + Tailwind v4 (@tailwindcss/vite) + react-router 6 +
+  TanStack Query + zustand + **PWA (vite-plugin-pwa, manifest + SW precache)**. `chess.js` v1, react-chessboard 4.
+- **DA** : fond noir profond, 3 niveaux de surface, 1 accent discret (`--color-accent: #6fa8dc`), thème clair/sombre
+  (toggle, persisté, piloté par vars CSS via `[data-theme="light"]`), polices système (offline), mobile-first
+  (bottom-nav 5 entrées, sidebar desktop), layout bento (grid).
+- **Architecture** : `lib/api.ts` (client API scopé par session, cookies same-origin, `ApiError`),
+  `lib/session.ts` (zustand : bootstrap `/users/me`, login/logout), `lib/types.ts` aligné sur les schémas API réels,
+  composants `ui.tsx` + `icons.tsx` SVG inline (zéro emoji), `Layout.tsx` (auth guard + nav).
+- **Pages** : Login/Register (UI CookieTransport), **Dashboard fonctionnel** (cadences + typologie coups + sync + digest),
+  **Parties fonctionnel** (filtres format/statut, badges résultat), Profil (via `/api/profile`, recalcul),
+  Réglages (thème, déco) ; placeholders Progression/Training/GameReview (port DS au prochain passage).
+- **Coach supprimée** : routes `/chat*` côté backend déjà retirées ; frontend Chat/Markdown/EvalCurve/MoveList.
+- Build `npm run build` OK (tsc -b + vite + PWA precache 11 entries). E2E via proxy Vite (port 4173) :
+  login 204 + cookie → `/api/stats` → données réelles scopées (rapid 3017 / blitz 2172).
+- **Piège node_modules** : installé root → impossible rm/mv cross-FS. Solution : **renommage même-FS** (rename syscall)
+  `mkdir`dans `.poc-root` (gitignorés) puis `npm install` neuf. `npm` nécessite `PATH=/home/gentleman31/node/bin:$PATH`.
 
 ## Pièges rencontrés (à retenir)
 - `.git/objects` d'origine appartenait à `root` (anciens builds Docker) → **nouveau dépôt git initialisé**, historique récupéré depuis `.git-poc-archive/` (archive conservée, gitignorée). Ne pas supprimer tant que le dépôt n'est pas poussé.
+- **`data/chesscoach.db` est `root:root`** (Docker) : écriture impossible en local → **dev sur une copie** `data/chesscoach-dev.db`
+  (gitignorée, 5 199 parties, elle subit les migrations). L'original ne doit PAS être migré tant que son propriétaire
+  n'est pas l'utilisateur d'exploitation (prévoir `chown` dans le déploiement). Backup de sécurité : `/tmp/opencode/chesscoach.db.bak.v6`.
 - Pas de binaire `sqlite3` sur le système → utiliser python `sqlite3` en lecture-ro (`file:...?mode=ro`).
 - L'API chess.com PubAPI : refresh max 12 h, 429 sur requêtes parallèles, séries OK → sérialiser les appels, `User-Agent` propre.
 - La data `data/chesscoach.db` (191 Mo, 320k plis) est le jeu de test principal — ne jamais la supprimer/corrompre (migrations versionnées uniquement).
+- `pkill -f` avec un motif présent dans la ligne de commande du shell opencode → tue le shell. Viser par PID (`pgrep -f ... | head -1`).
+- `admin@chesscoach.local` est rejeté par email-validator (domaine réservé) → utiliser `.io`.

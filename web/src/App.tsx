@@ -1,56 +1,69 @@
-import { useState } from "react";
-import { Link, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
+import Layout from "./components/Layout";
+import { Spinner } from "./components/ui";
+import { useSession } from "./lib/session";
 import Dashboard from "./pages/Dashboard";
-import GamesList from "./pages/GamesList";
 import GameReview from "./pages/GameReview";
-import Coach from "./pages/Coach";
+import Games from "./pages/Games";
+import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import Progression from "./pages/Progression";
-import Practice from "./pages/Practice";
+import Register from "./pages/Register";
 import Settings from "./pages/Settings";
+import Training from "./pages/Training";
+
+function Splash() {
+  return (
+    <div className="flex min-h-dvh items-center justify-center">
+      <Spinner className="h-6 w-6 text-muted" />
+    </div>
+  );
+}
+
+function RequireAuth() {
+  const { user } = useSession();
+  const location = useLocation();
+  if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
+  return <Outlet />;
+}
+
+function Public() {
+  const { user } = useSession();
+  if (user) return <Navigate to="/dashboard" replace />;
+  return <Outlet />;
+}
 
 export default function App() {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const close = () => setMenuOpen(false);
+  const { bootstrapped, bootstrap } = useSession();
+
+  useEffect(() => {
+    void bootstrap();
+  }, [bootstrap]);
+
+  if (!bootstrapped) return <Splash />;
+
   return (
-    <div className="app">
-      <nav className="nav">
-        <Link to="/" className="brand" onClick={close}>
-          ♟ Coach d'échecs
-        </Link>
-        <button
-          className={`nav-toggle${menuOpen ? " open" : ""}`}
-          aria-label="Menu"
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((v) => !v)}
-        >
-          {menuOpen ? "✕" : "☰"}
-        </button>
-        <div className={`nav-links${menuOpen ? " open" : ""}`}>
-          <Link to="/" onClick={close}>Tableau de bord</Link>
-          <Link to="/games" onClick={close}>Parties</Link>
-          <Link to="/profile" onClick={close}>Profil</Link>
-          <Link to="/progression" onClick={close}>Progression</Link>
-          <Link to="/practice" onClick={close}>Entraînement</Link>
-          <Link to="/coach" onClick={close}>Coach</Link>
-          <Link to="/settings" className="nav-settings" title="Paramètres" onClick={close}>
-            ⚙
-          </Link>
-        </div>
-      </nav>
-      <main className="main">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/games" element={<GamesList />} />
+    <Routes>
+      <Route element={<Public />}>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+      </Route>
+
+      <Route element={<RequireAuth />}>
+        <Route element={<Layout />}>
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/games" element={<Games />} />
           <Route path="/games/:id" element={<GameReview />} />
-          <Route path="/profile" element={<Profile />} />
           <Route path="/progression" element={<Progression />} />
-          <Route path="/practice" element={<Practice />} />
-          <Route path="/coach" element={<Coach />} />
-          <Route path="/coach/:thread" element={<Coach />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/training" element={<Training />} />
           <Route path="/settings" element={<Settings />} />
-        </Routes>
-      </main>
-    </div>
+        </Route>
+      </Route>
+
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

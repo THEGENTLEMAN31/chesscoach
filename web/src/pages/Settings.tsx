@@ -1,89 +1,73 @@
-import { useEffect, useState } from "react";
-import { loadSettings, saveSettings, type EvalDisplay, type Settings } from "../settings";
-
-function Toggle({
-  label,
-  hint,
-  checked,
-  onChange,
-}: {
-  label: string;
-  hint?: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <label className="setting-row">
-      <span>
-        <b>{label}</b>
-        {hint && <small>{hint}</small>}
-      </span>
-      <span className="switch">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-        <span className="slider" />
-      </span>
-    </label>
-  );
-}
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Button, Card } from "../components/ui";
+import { MoonIcon, SunIcon } from "../components/icons";
+import { currentTheme, setTheme } from "../lib/theme";
+import type { Theme } from "../lib/theme";
+import { useSession } from "../lib/session";
 
 export default function Settings() {
-  const [settings, setSettings] = useState<Settings>(loadSettings);
+  const { user } = useSession();
+  const navigate = useNavigate();
+  const [theme, setThemeState] = useState<Theme>(currentTheme());
 
-  useEffect(() => {
-    saveSettings(settings);
-  }, [settings]);
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    setThemeState(next);
+  };
 
-  const set = (patch: Partial<Settings>) =>
-    setSettings((s) => ({ ...s, ...patch }));
+  const logout = async () => {
+    const { logout } = useSession.getState();
+    await logout();
+    navigate("/login", { replace: true });
+  };
 
   return (
-    <div className="settings-page">
-      <div className="card">
-        <h2>Paramètres</h2>
-        <p className="muted">
-          Préférences d'interaction sur les échiquiers (entraînement et revue).
-        </p>
-      </div>
-      <div className="card">
-        <Toggle
-          label="Déplacement par clic (façon Lichess)"
-          hint="Clique une pièce : ses coups possibles s'affichent en pointillés, puis clique la case d'arrivée. Le glisser-déposer reste disponible."
-          checked={settings.clickToMove}
-          onChange={(v) => set({ clickToMove: v })}
-        />
-        <Toggle
-          label="Indiquer les coups possibles"
-          hint="Affiche les petits pointillés sur les cases accessibles quand une pièce est sélectionnée."
-          checked={settings.showLegalMoves}
-          onChange={(v) => set({ showLegalMoves: v })}
-        />
-      </div>
-      <div className="card">
-        <h3>Perte d'un coup</h3>
-        <p className="muted">
-          Comment exprimer le coût d'une bévue sur l'échiquier (entraînement et revue).
-        </p>
-        <div className="segmented">
-          {(
-            [
-              ["cp", "En pions (+2.4)"],
-              ["winprob", "Probabilité (65%)"],
-            ] as [EvalDisplay, string][]
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              className={settings.evalDisplay === value ? "active" : ""}
-              onClick={() => set({ evalDisplay: value })}
-            >
-              {label}
-            </button>
-          ))}
+    <div className="flex max-w-xl flex-col gap-4">
+      <h1 className="text-xl font-semibold tracking-tight">Réglages</h1>
+
+      <Card className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-medium">Compte</div>
+          <div className="mt-0.5 text-xs text-muted">
+            {user?.email} · {user?.chesscom_username}
+          </div>
         </div>
-      </div>
+      </Card>
+
+      <Card className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {theme === "dark" ? (
+            <MoonIcon className="h-4 w-4 text-muted" />
+          ) : (
+            <SunIcon className="h-4 w-4 text-muted" />
+          )}
+          <span className="text-sm">Thème clair</span>
+        </div>
+        <button
+          role="switch"
+          aria-checked={theme === "light"}
+          onClick={toggleTheme}
+          className={`relative h-6 w-11 rounded-full transition-colors ${
+            theme === "light" ? "bg-accent" : "bg-surface-3"
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 h-5 w-5 rounded-full bg-ink/80 transition-transform ${
+              theme === "light" ? "translate-x-5" : "translate-x-0.5"
+            }`}
+          />
+        </button>
+      </Card>
+
+      <Button
+        variant="ghost"
+        onClick={() => void logout()}
+        className="justify-start text-red-400 hover:bg-surface-3"
+      >
+        Se déconnecter
+      </Button>
     </div>
   );
 }

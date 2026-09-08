@@ -1,240 +1,172 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import type { PlayerProfile, Stats } from "../types";
-import { api, timeClassLabel } from "../api";
-import { CLASS_LABEL, CLASS_COLOR } from "../constants";
-import Markdown from "../components/Markdown";
+import { useQuery } from "@tanstack/react-query";
+import { BoltIcon, RefreshIcon } from "../components/icons";
+import { Button, Card, Spinner, Stat } from "../components/ui";
+import { api } from "../lib/api";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+  CLASS_COLOR,
+  CLASS_LABEL,
+  TIME_CLASS_LABEL,
+} from "../lib/constants";
+import { useSession } from "../lib/session";
+import type { ClassCount } from "../lib/types";
 
-interface Digest {
-  period: string | null;
-  facts: Record<string, unknown> | null;
-  narrative: string | null;
+const CLASS_ORDER = ["best", "good", "inaccuracy", "mistake", "blunder"];
+
+function ClassRow({ c }: { c: ClassCount }) {
+  const total = c.games || 1;
+  const winShare = (c.wins / total) * 100;
+  const drawShare = (c.draws / total) * 100;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-sm font-medium">
+          {TIME_CLASS_LABEL[c.time_class] ?? c.time_class}
+        </span>
+        <span className="text-xs text-muted tabular-nums">{c.games} parties</span>
+      </div>
+      <div className="flex h-1.5 overflow-hidden rounded-full bg-surface-3">
+        <div className="bg-accent" style={{ width: `${winShare}%` }} />
+        <div className="bg-muted/60" style={{ width: `${drawShare}%` }} />
+      </div>
+      <div className="flex gap-3 text-xs text-muted tabular-nums">
+        <span>{c.wins} V</span>
+        <span>{c.draws} N</span>
+        <span>{c.losses} D</span>
+        <span className="ml-auto text-ink">{c.accuracy ?? "—"} %</span>
+        <span className="text-accent">{c.acpl ?? "—"} aCPL</span>
+      </div>
+    </div>
+  );
 }
 
 export default function Dashboard() {
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [status, setStatus] = useState<Awaited<ReturnType<typeof api.syncStatus>> | null>(null);
-  const [digest, setDigest] = useState<Digest | null>(null);
-  const [profile, setProfile] = useState<PlayerProfile | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [genDigest, setGenDigest] = useState(false);
+  const { user } = useSession();
+  const statsQ = useQuery({ queryKey: ["stats"], queryFn: api.stats });
+  const syncQ = useQuery({
+    queryKey: ["sync"],
+    queryFn: api.syncStatus,
+    refetchInterval: 4000,
+  });
+  const digestQ = useQuery({ queryKey: ["digest"], queryFn: api.digestLatest });
 
-  const load = () => {
-    api.stats().then(setStats).catch((e) => setErr(String(e)));
-    api.syncStatus().then(setStatus).catch(() => {});
-    api.profile().then(setProfile).catch(() => {});
-    fetch("/api/digest/latest")
-      .then((r) => r.json())
-      .then(setDigest)
-      .catch(() => {});
+  const running = syncQ.data?.running ?? false;
+  const lastRun = syncQ.data?.last;
+
+  const startSync = async () => {
+    await api.sync(3);
+    await syncQ.refetch();
   };
 
-  useEffect(() => {
-    load();
-    const t = setInterval(() => {
-      api.syncStatus().then(setStatus).catch(() => {});
-    }, 10000);
-    return () => clearInterval(t);
-  }, []);
-
-  const triggerSync = async () => {
-    setSyncing(true);
-    try {
-      await api.sync(1);
-    } catch (e) {
-      console.error(e);
-    }
-    let waited = 0;
-    const iv = setInterval(async () => {
-      waited += 3000;
-      const st = await api.syncStatus().catch(() => null);
-      if (st) setStatus(st);
-      if ((st && !st.running) || waited >= 90000) {
-        clearInterval(iv);
-        load();
-        setSyncing(false);
-      }
-    }, 3000);
-  };
-
-  const generateDigest = async () => {
-    setGenDigest(true);
-    try {
-      const res = await fetch("/api/digest/generate", { method: "POST" });
-      const d = (await res.json()) as Digest;
-      setDigest(d);
-    } catch (e) {
-      console.error(e);
-    }
-    setGenDigest(false);
-  };
-
-  if (err) return <div className="card">Erreur : {err}</div>;
-  if (!stats) return <div className="card">Chargement…</div>;
-
-  const classPie = (stats.by_time_class || []).map((c) => ({
-    name: timeClassLabel[c.time_class] ?? c.time_class,
-    value: c.games,
-  }));
-
-  const clsPie = Object.entries(stats.move_classifications || {}).map(([k, v]) => ({
-    name: CLASS_LABEL[k] ?? k,
-    value: v,
-    color: CLASS_COLOR[k],
-  }));
+  const cls = statsQ.data?.move_classifications ?? {};
+  const maxCls = Math.max(1, ...CLASS_ORDER.map((k) => cls[k] ?? 0));
+  const digest = digestQ.data;
+  const narrative = Array.isArray(digest?.narrative)
+    ? digest?.narrative.join(" ")
+    : digest?.narrative;
 
   return (
-    <div className="dashboard">
-      <div className="sync-bar">
-        <span className="sync-status">
-          {status?.running
-            ? "Synchronisation en cours…"
-            : status?.pending_analysis
-              ? `${status.pending_analysis} partie(s) en attente d'analyse`
-              : "À jour"}
-        </span>
-        {status?.last && !status.running && (
-          <span className="sync-last">
-            {status.last.games_new > 0
-              ? ` · ${status.last.games_new} nouvelle(s) partie(s) récupérées`
-              : " · dernières parties déjà en base"}
-          </span>
-        )}
-        <button className="sync-btn" onClick={triggerSync} disabled={syncing || status?.running}>
-          {syncing || status?.running ? "…" : "Récupérer les dernières parties"}
-        </button>
+    <div className="flex flex-col gap-4">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight">
+          Bonjour, {user?.chesscom_username}
+        </h1>
+        <p className="mt-0.5 text-sm text-muted">
+          Ton état de jeu, en un coup d'œil.
+        </p>
       </div>
 
-      <div className="stats-grid">
-        {(stats.by_time_class || []).map((c) => (
-          <Link
-            key={c.time_class}
-            to={`/games?time_class=${c.time_class}`}
-            className="card link-card"
-          >
-            <h3>{timeClassLabel[c.time_class] ?? c.time_class}</h3>
-            <div className="big">{c.games} <small>parties</small></div>
-            <div className="stat-line"><b>{c.accuracy ?? "—"}%</b> précision</div>
-            <div className="stat-line"><b>{c.acpl ?? "—"}</b> ACPL</div>
-            <div className="wdl">
-              <span className="w">{c.wins}</span>
-              <span className="d">{c.draws}</span>
-              <span className="l">{c.losses}</span>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card className="sm:col-span-2">
+          <h2 className="text-sm font-medium text-muted">Cadences</h2>
+          {statsQ.isLoading ? (
+            <div className="flex h-24 items-center justify-center">
+              <Spinner className="h-5 w-5 text-muted" />
             </div>
-          </Link>
-        ))}
-      </div>
+          ) : (
+            <div className="mt-3 flex flex-col gap-4">
+              {statsQ.data?.by_time_class.map((c) => (
+                <ClassRow key={c.time_class} c={c} />
+              ))}
+              {statsQ.data && statsQ.data.by_time_class.length === 0 ? (
+                <p className="text-sm text-muted">
+                  Aucune partie analysée. Lance une synchronisation.
+                </p>
+              ) : null}
+            </div>
+          )}
+        </Card>
 
-      <div className="charts-grid">
-        <div className="card">
-          <h3>Répartition des coups</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie data={clsPie} dataKey="value" nameKey="name" innerRadius={45} outerRadius={80}>
-                {clsPie.map((c, i) => (
-                  <Cell key={i} fill={c.color} />
-                ))}
-              </Pie>
-              <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e5e5e5", borderRadius: 8, color: "#1c1c1c" }} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="legend">
-            {clsPie.map((c) => (
-              <span key={c.name} className="legend-item">
-                <i style={{ background: c.color }} />
-                {c.name}
-              </span>
-            ))}
+        <Card className="sm:col-span-2">
+          <h2 className="text-sm font-medium text-muted">Typologie des coups</h2>
+          <div className="mt-3 flex flex-col gap-3">
+            {CLASS_ORDER.map((k) => {
+              const n = cls[k] ?? 0;
+              return (
+                <div key={k} className="flex items-center gap-3">
+                  <span className="w-24 shrink-0 text-xs text-muted">
+                    {CLASS_LABEL[k]}
+                  </span>
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-3">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${(n / maxCls) * 100}%`,
+                        backgroundColor: CLASS_COLOR[k],
+                      }}
+                    />
+                  </div>
+                  <span className="w-10 shrink-0 text-right text-xs text-muted tabular-nums">
+                    {n}
+                  </span>
+                </div>
+              );
+            })}
           </div>
-        </div>
+        </Card>
 
-        <div className="card">
-          <h3>Parties par format</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={classPie}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#d4d4d4" />
-              <XAxis dataKey="name" tick={{ fill: "#6b7280", fontSize: 12 }} />
-              <YAxis tick={{ fill: "#6b7280", fontSize: 12 }} allowDecimals={false} />
-              <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e5e5e5", borderRadius: 8, color: "#1c1c1c" }} />
-              <Bar dataKey="value" fill="#38bdf8" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="card">
-        <h3>Ouvertures les plus jouées</h3>
-        <div className="table-wrap">
-          <table className="table">
-          <thead>
-            <tr><th>ECO</th><th>Ouverture</th><th>Parties</th></tr>
-          </thead>
-          <tbody>
-            {(stats.openings || []).map((o) => (
-              <tr key={o.eco} className="row-click">
-                <td>
-                  <Link to={`/games?eco=${o.eco}`}>{o.eco}</Link>
-                </td>
-                <td>
-                  <Link to={`/games?eco=${o.eco}`}>{o.opening_name || "—"}</Link>
-                </td>
-                <td>{o.n}</td>
-              </tr>
-            ))}
-          </tbody>
-          </table>
-        </div>
-      </div>
-
-      {profile && profile.concepts_missing.length > 0 && (
-        <div className="card">
-          <div className="digest-head">
-            <h3>À travailler</h3>
-            <Link to="/practice">S'entraîner →</Link>
+        <Card className="sm:col-span-2 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BoltIcon className="h-4 w-4 text-accent" />
+              <h2 className="text-sm font-medium text-muted">Synchronisation</h2>
+            </div>
+            <Button
+              onClick={() => void startSync()}
+              disabled={running}
+              variant="ghost"
+              className="px-3 py-1.5 text-xs"
+            >
+              <RefreshIcon className={`h-3.5 w-3.5 ${running ? "animate-spin" : ""}`} />
+              {running ? "En cours…" : "Synchroniser"}
+            </Button>
           </div>
-          <div className="chips">
-            {profile.concepts_missing.slice(0, 5).map((c) => (
-              <Link key={c.key} to={`/practice?concept=${c.key}`} className="chip chip-link">
-                {c.label} · <b>{c.n}</b> erreurs
-              </Link>
-            ))}
-          </div>
-          {profile.recommendations.length > 0 && (
-            <p className="muted" style={{ marginTop: "0.6rem" }}>
-              {profile.recommendations[0].titre} —{" "}
-              {profile.recommendations[0].action.slice(0, 120)}…
+          {lastRun ? (
+            <div className="grid grid-cols-3 gap-3">
+              <Stat label="Parties vues" value={lastRun.games_seen} className="text-sm [&>div.text-2xl]:text-lg" />
+              <Stat label="Nouvelles" value={lastRun.games_new} className="text-sm [&>div.text-2xl]:text-lg" />
+              <Stat label="Analysées" value={lastRun.games_analyzed} className="text-sm [&>div.text-2xl]:text-lg" />
+            </div>
+          ) : (
+            <p className="text-sm text-muted">
+              Aucune synchronisation passée. Lance ta première.
             </p>
           )}
-        </div>
-      )}
+          <div className="grid grid-cols-2 gap-3 border-t border-line pt-3">
+            <Stat label="aCPL global" value={statsQ.data?.totals.avg_cp_loss ?? "—"} className="text-sm [&>div.text-2xl]:text-lg" />
+            <Stat label="Gain de perte (blunders)" value={statsQ.data?.totals.blunder_acpl ?? "—"} className="text-sm [&>div.text-2xl]:text-lg" />
+          </div>
+        </Card>
 
-      <div className="card digest-card">
-        <div className="digest-head">
-          <h3>Digest de la semaine</h3>
-          <button onClick={generateDigest} disabled={genDigest}>
-            {genDigest ? "…" : digest?.period ? "Régénérer" : "Générer"}
-          </button>
-        </div>
-        {digest?.narrative ? (
-          <Markdown text={digest.narrative} />
-        ) : (
-          <p className="muted">
-            Le digest est généré la nuit par un agent LLM avec accès à tes stats. Tu peux aussi le générer à la demande.
-          </p>
-        )}
+        {digest ? (
+          <Card className="sm:col-span-2">
+            <h2 className="text-sm font-medium text-muted">
+              Digest {digest.period}
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-ink/90">
+              {narrative ?? "Aucun récapitulatif pour l'instant."}
+            </p>
+          </Card>
+        ) : null}
       </div>
     </div>
   );
