@@ -16,6 +16,7 @@ Autonomie totale jusqu'à la V2 déployable. Tests sur le compte `thegentleman31
 - ✅ Moteur : **stockfish.js WASM (lite single-threaded, v18)** dans un `EngineWorker` dédié (échangeable). Moteur natif SF18 conservé côté serveur pour le batch historique. MultiPV pour les variantes.
 - ✅ PWA installable + offline, UI **mobile-first**.
 - ✅ DA : minimaliste — fond noir profond, éléments blancs/gris, **layout Bento**, espacement généreux, **1 accent discret**, thème clair au toggle, mode sombre par défaut.
+- ✅ Règles DA (obligatoires, à toute nouvelle UI) : **layout Bento / grid** ; fond noir profond multi-niveaux de surface ; texte blanc/gris (1 seul accent coloré discret) ; **espacements généreux** (gap ≥ 16px, padding confortable) ; pas d'emoji (icônes SVG) ; typographie système ; mobile-first.
 - ✅ Stack UI : React 18 + TS + Vite · **Tailwind v4** · **shadcn/ui** · **Bklit UI** (charts, remplace recharts) · chess.js v1 · react-chessboard · react-markdown · TanStack Query · Zustand.
 - ✅ Réemploi du moteur d'analyse POC : eval.py, concepts.py, openings.py, pgn.py, profile.py, digest.py, data_service.py, chesscom.py, sync/manager. Portage TS des algos eval/classif dans `shared/` pour résultats identiques navigateur/serveur.
 - ✅ Page **Coach** supprimée (backend agent dormant).

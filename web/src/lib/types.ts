@@ -162,6 +162,7 @@ export interface EtudeStats {
 }
 
 export interface EtudePayload {
+  username: string;
   time_class: string;
   game_id?: number | null;
   ply?: number | null;

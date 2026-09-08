@@ -34,6 +34,8 @@ export const CONCEPT_LABEL: Record<string, string> = {
   threat_ignored: "Menace ignorée",
 };
 
+export const CONCEPT_LIST = Object.keys(CONCEPT_LABEL);
+
 export const TIME_CLASS_LABEL: Record<string, string> = {
   rapid: "Rapide",
   blitz: "Blitz",

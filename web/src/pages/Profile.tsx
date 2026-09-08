@@ -18,6 +18,11 @@ export default function Profile() {
 
   const profile = profileQ.data as PlayerProfile | undefined;
 
+  const target =
+    (profile?.objective.targets?.[timeClass] ?? profile?.objective.target_elo) ??
+    null;
+  const gap = profile?.objective.gap ?? null;
+
   const recompute = async () => {
     setRecomputing(true);
     try {
@@ -68,6 +73,13 @@ export default function Profile() {
             <Stat label="Parties analysées" value={profile.games?.n ?? "—"} />
             <Stat label="Elo récent" value={profile.rating?.latest ?? "—"} />
             <Stat label="Elo max" value={profile.rating?.max ?? "—"} />
+            {target !== null ? (
+              <Stat
+                label={timeClass === "global" ? "Objectif" : `Objectif ${timeClass}`}
+                value={target}
+                sub={gap !== null ? `${gap > 0 ? "+" : ""}${gap} d'écart` : undefined}
+              />
+            ) : null}
             <Stat label="Progression" value={profile.objective?.progression_pct ?? "—"} sub="vers l'objectif" />
           </Card>
           {profile.strengths && profile.strengths.length > 0 ? (

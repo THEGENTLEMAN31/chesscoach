@@ -2,8 +2,14 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -34,12 +40,37 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
+workbox: {
         globPatterns: ["**/*.{js,css,html,svg,woff2}"],
         navigateFallbackDenylist: [/^\/api/],
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "chart-vendor": [
+            "@visx/curve",
+            "@visx/shape",
+            "@visx/scale",
+            "@visx/grid",
+            "@visx/responsive",
+            "d3-array",
+            "d3-shape",
+          ],
+          motion: ["motion"],
+          "chess-vendor": [
+            "chess.js",
+            "react-chessboard",
+            "react-dnd",
+            "react-dnd-html5-backend",
+            "react-dnd-touch-backend",
+          ],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

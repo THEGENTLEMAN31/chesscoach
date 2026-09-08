@@ -5,11 +5,62 @@ import { MoonIcon, SunIcon } from "../components/icons";
 import { currentTheme, setTheme } from "../lib/theme";
 import type { Theme } from "../lib/theme";
 import { useSession } from "../lib/session";
+import {
+  loadSettings,
+  saveSettings,
+  type EvalDisplay,
+  type Settings as GameSettings,
+} from "../lib/game/settings";
+
+function Toggle({
+  checked,
+  onChange,
+  label,
+  hint,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  hint?: string;
+}) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="flex w-full items-center justify-between gap-3 text-left"
+    >
+      <span>
+        <span className="block text-sm text-ink">{label}</span>
+        {hint ? <span className="mt-0.5 block text-xs text-muted">{hint}</span> : null}
+      </span>
+      <span
+        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+          checked ? "bg-accent" : "bg-surface-3"
+        }`}
+        aria-hidden
+      >
+        <span
+          className={`absolute top-0.5 h-5 w-5 rounded-full bg-ink/80 transition-transform ${
+            checked ? "translate-x-5" : "translate-x-0.5"
+          }`}
+        />
+      </span>
+    </button>
+  );
+}
 
 export default function Settings() {
   const { user } = useSession();
   const navigate = useNavigate();
   const [theme, setThemeState] = useState<Theme>(currentTheme());
+  const [game, setGame] = useState<GameSettings>(loadSettings);
+
+  const patchGame = (p: Partial<GameSettings>) => {
+    const next = { ...game, ...p };
+    setGame(next);
+    saveSettings(next);
+  };
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -59,6 +110,43 @@ export default function Settings() {
             }`}
           />
         </button>
+      </Card>
+
+      {["clickToMove", "showLegalMoves"].map((key) => (
+        <Card key={key}>
+          <Toggle
+            checked={game[key as keyof GameSettings] as boolean}
+            onChange={(v) => patchGame({ [key]: v })}
+            label={key === "clickToMove" ? "Clic pour jouer" : "Montrer les coups légaux"}
+            hint={
+              key === "clickToMove"
+                ? "Cliquer une pièce puis la case d'arrivée (sinon, glisser-déposer)."
+                : "Afficher les cases d'arrivée possibles sur l'échiquier."
+            }
+          />
+        </Card>
+      ))}
+
+      <Card>
+        <span className="block text-sm text-ink">Affichage des pertes</span>
+        <span className="mt-0.5 block text-xs text-muted">
+          En pions (CPL) ou en points de probabilité de gain.
+        </span>
+        <div className="mt-3 flex items-center gap-1 rounded-lg border border-line bg-surface-3/50 p-1">
+          {(["cp", "winprob"] as EvalDisplay[]).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => patchGame({ evalDisplay: mode })}
+              className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                game.evalDisplay === mode
+                  ? "bg-accent text-accent-ink"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              {mode === "cp" ? "Pions" : "Probabilité"}
+            </button>
+          ))}
+        </div>
       </Card>
 
       <Button

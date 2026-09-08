@@ -88,6 +88,11 @@ export const api = {
   profile: (timeClass = "global") =>
     request<Record<string, unknown>>(`/api/profile${qs({ time_class: timeClass })}`),
 
+  profileAll: (recompute = false) =>
+    request<{ profiles: Record<string, Record<string, unknown>> }>(
+      `/api/profile/all${qs({ recompute: String(recompute) })}`,
+    ),
+
   profileRecompute: (timeClass = "global") =>
     request<Record<string, unknown>>(`/api/profile/recompute${qs({ time_class: timeClass })}`, {
       method: "POST",
