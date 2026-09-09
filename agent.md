@@ -329,22 +329,45 @@ chacun avec exploration du code + recherches web. Rapport consolidé ci-dessous.
 - SQLite WAL **adéquat jusqu'à ~50 utilisateurs simultanés** → migration Postgres prématurée.
 
 ## 5. Onboarding / Rétention
+> ⚠️ **PRINCIPE PRODUIT NON NÉGOCIABLE (décision 09/09)** : la rétention ne doit JAMAIS créer d'addiction ni de
+> faux positifs. **Pas de gamification qui récompense la PRÉSENCE**, seulement des mécanismes qui servent
+> L'APPRENTISSAGE réel. Référence anti-modèle : les flammes Snap — les gens envoient des photos sans intérêt juste
+> pour conserver la série ; le mécanisme a perdu son but (garder le contact) et devient de la pression. Ici, on ne
+> veut PAS que quelqu'un ouvre l'app 2 s « pour ne pas casser la série » ou fasse un exercice en bâclant.
+>
+> Conséquences concrètes que TOUT streak/notif/rew compétitif doit respecter :
+> - **Pas de streak qui punit** : pas de compte à rebours stressant, pas de « streak en danger », pas de sanction
+>   de perte. Rien qui incite à une action vide pour maintenir un chiffre.
+> - **La métrique reflète l'apprentissage**, pas la présence : un temps minimal/l'achèvement réel, pas un simple
+>   "login du jour". Un exercice bâclé (trop rapide / échec sans réflexion) ne doit PAS compter comme réussi.
+> - **Ce qui compte c'est de revenir APPRENDRE** : la vrai boucle = le joueur revient parce qu'il progresse et que
+>   le contenu lui est utile, pas parce qu'il perd un badge. Récompenser la maîtrise et le progrès réel, jamais
+>   l'assiduité vide.
+> - Les notifications doivent offrir de la VALEUR (un concept qui se dégrade, une nouvelle faiblesse détectée,
+>   un retour utile), pas de la pression/pénurie.
+>
 - **Temps-avant-valeur trop long** : inscription → données utiles = heures (sync + analyse batch) sans feedback ni
-  guidage. **Aucun mécanisme de « pull »** (pas de notif, digest non distribué, pas de streak).
+  guidage. **Le vrai levier de rétention est le « aha » (profil pédagogique + 1er exercice perso), pas la punition.**
 - Priorités :
-  1. **Auto-login post-inscription** (Register.tsx, ROi ultra-élevé, effort faible).
+  1. **Auto-login post-inscription** (Register.tsx, ROI ultra-élevé, effort faible).
   2. **Dashboard « première visite »** (wizard 3-4 étapes, barre de progression sync, teases pages, CTA objectif).
-  3. **Empty states instructifs** partout.
-  4. **Streak d'entraînement quotidien** (table + UI + freeze) — levier rétention #1 (modèle Duolingo).
-  5. **Notifications push PWA** (rappel quotidien, streak en danger, nouvelles parties, digest).
-  6. **Digest exploité** : généré mais jamais distribué → email hebdo (Resend déjà présent) + version visuelle + cron.
-  7. **« Exercice du jour »** en carte prioritaire Dashboard.
-  8. Barre de progression vers l'objectif Elo (pas seulement Profil) + badges simples.
+  3. **Empty states instructifs** partout (expliquer ce qui VA arriver, pas juste « rien »).
+  4. **Engagement à la valeur, pas à la présence** : « Exercice du jour » issu de VOS erreurs récentes (pas un
+     puzzle générique) + un retour concret « voici ta faiblesse du moment ». Revient parce que c'est utile.
+     Si streak : optionnel, **non punitif** (+1 congé gratuit, jamais de sanction) et **conditionné à un vrai
+     apprentissage** (exercice complété sérieusement, pas un login). Se poser : est-il même nécessaire ?
+  5. **Notifications push PWA à VALEUR** (nouvelle faiblesse détectée, concept qui se dégrade, digest prêt),
+     jamais « votre streak est en danger ». Fréquence sobre, désactivable, non-pénurique.
+  6. **Digest exploité** : généré mais jamais distribué → email hebdo (Resend déjà présent) + version visuelle +
+     cron. Le digest = compte-rendu de PROGRÈS réel, pas une injonction.
+  7. Barre de progression vers l'objectif Elo (pas seulement Profil) + badges qui récompensent la **maîtrise**
+     (concept ≥ 80% maintenu, précision en hausse), jamais la simple fréquence de connexion.
 
 ## Synthèse priorisée (cross-expert, ROI décroissant)
 1. Fix bug CSS charts (`--chart`) — 15 min, global. ✅ si corrigé
 2. Onboarding : auto-login + dashboard 1re visite + empty states (temps-avant-valeur heures→minutes)
-3. Rétention : streak + notifications push + exercice du jour
+3. Rétention **à la valeur, sans addiction** : aha moment + exercice du jour (vos erreurs) + notifs à valeur +
+   digest de progrès ; streak uniquement si non punitif et basé sur l'apprentissage réel (voir §5 ⚠️ principe)
 4. Backend robustness : rate limiting, retry chess.com & analyzer, lock par utilisateur, garde-fou JWT, fixes digest/stats scope
 5. Échecs : sortir `candidate` du fourre-tout + ajouter concepts stratégie + exercices finales/stratégie + plan hebdo + vraie répétition espacée
 6. Mobile : précacher WASM + icônes PNG PWA + session persistée offline
