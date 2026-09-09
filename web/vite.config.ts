@@ -13,14 +13,23 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    VitePWA({
+VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg", "icon.svg"],
+      includeAssets: [
+        "favicon.svg",
+        "icon.svg",
+        "icon-maskable.svg",
+        "apple-touch-icon.png",
+        "pwa-192x192.png",
+        "pwa-512x512.png",
+        "pwa-maskable-512x512.png",
+      ],
       manifest: {
         name: "ChessCoach",
         short_name: "ChessCoach",
         description: "Coach d'échecs personnel — local-first",
         lang: "fr",
+        id: "/",
         theme_color: "#0B0E11",
         background_color: "#0B0E11",
         display: "standalone",
@@ -38,18 +47,68 @@ export default defineConfig({
             type: "image/svg+xml",
             purpose: "maskable",
           },
+          {
+            src: "pwa-192x192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: "pwa-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: "pwa-maskable-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
+          },
         ],
       },
-workbox: {
+      workbox: {
         globPatterns: [
-          "assets/**/*.{js,css,woff2}",
+          "assets/**/*.{js,css,woff2,wasm}",
+          "engine/worker.js",
+          "engine/stockfish.js",
           "index.html",
           "favicon.svg",
           "icon.svg",
           "icon-maskable.svg",
           "manifest.webmanifest",
         ],
+        // sql-wasm ≈ 650 ko précaché ; stockfish.wasm (7,3 Mo) est trop lourd
+        // pour le precache d'installation → runtime CacheFirst (voir plus bas).
+        maximumFileSizeToCacheInBytes: 1 * 1024 * 1024,
         navigateFallbackDenylist: [/^\/api/],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url, request }) =>
+              url.pathname.startsWith("/engine/") &&
+              url.pathname.endsWith(".wasm") &&
+              request.method === "GET",
+            handler: "CacheFirst",
+            options: {
+              cacheName: "engine-wasm",
+              expiration: { maxEntries: 2, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: ({ url, request }) =>
+              url.origin === self.location.origin &&
+              request.method === "GET" &&
+              url.pathname.startsWith("/api/"),
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "api-cache",
+              networkTimeoutSeconds: 5,
+              expiration: { maxEntries: 64, maxAgeSeconds: 60 * 60 * 24 * 7 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
     }),
   ],
