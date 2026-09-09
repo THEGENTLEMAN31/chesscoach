@@ -350,9 +350,23 @@ export default function Training() {
               }}
             />
           ) : (
-            <p className="py-8 text-center text-sm text-muted">
-              Aucune bévue disponible pour ce concept.
-            </p>
+            <div className="flex flex-col gap-2 py-8 text-center">
+              <p className="text-sm text-muted">Aucune bévue disponible pour ce concept.</p>
+              <p className="mx-auto max-w-sm text-xs leading-relaxed text-muted/80">
+                Les exercices sont générés depuis <b className="text-ink">tes parties analysées</b>.
+                Analyse quelques parties (synchronisation ou import) : elles apparaîtront ici
+                automatiquement, classées par concept.
+              </p>
+              <div className="flex justify-center gap-2">
+                <Link to="/dashboard" className="text-xs font-medium text-accent hover:underline">
+                  Synchroniser
+                </Link>
+                <span className="text-xs text-muted">·</span>
+                <Link to="/import" className="text-xs font-medium text-accent hover:underline">
+                  Importer une partie
+                </Link>
+              </div>
+            </div>
           )}
           <div className="mt-3 flex items-center justify-between gap-2">
             <span className="text-sm text-muted">
@@ -370,7 +384,10 @@ export default function Training() {
 
         <Card>
           {!exercise ? (
-            <p className="text-sm text-muted">Aucun exercice à afficher.</p>
+            <p className="text-sm text-muted">
+              Aucun exercice pour l'instant. Synchronise ou importe des parties pour
+              générer tes positions d'entraînement.
+            </p>
           ) : (
             <div className="flex flex-col gap-3">
               <div className="flex flex-wrap gap-2">

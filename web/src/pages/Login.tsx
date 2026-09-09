@@ -3,10 +3,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button, Card } from "../components/ui";
 import { ApiError } from "../lib/api";
 import { useSession } from "../lib/session";
+import { useToast } from "../lib/toast";
 
 export default function Login() {
   const { login } = useSession();
   const navigate = useNavigate();
+  const { push } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -18,6 +20,7 @@ export default function Login() {
     setBusy(true);
     try {
       await login(email, password);
+      push("success", "Connecté. Bonne analyse !");
       navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Connexion impossible.");

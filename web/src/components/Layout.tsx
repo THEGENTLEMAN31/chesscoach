@@ -106,21 +106,21 @@ export default function Layout() {
             <NavLink
               to="/settings"
               aria-label="Réglages"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted md:hidden transition-colors hover:bg-surface-3 hover:text-ink"
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-muted md:hidden transition-colors hover:bg-surface-3 hover:text-ink"
             >
               <SettingsIcon className="h-4.5 w-4.5" />
             </NavLink>
             <button
               onClick={toggleTheme}
               aria-label="Basculer le thème"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-3 hover:text-ink"
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-3 hover:text-ink md:h-8 md:w-8"
             >
               {theme === "dark" ? <SunIcon className="h-4.5 w-4.5" /> : <MoonIcon className="h-4.5 w-4.5" />}
             </button>
             <button
               onClick={() => void logout()}
               aria-label="Déconnexion"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-3 hover:text-ink"
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-3 hover:text-ink md:h-8 md:w-8"
             >
               <LogoutIcon className="h-4.5 w-4.5" />
             </button>

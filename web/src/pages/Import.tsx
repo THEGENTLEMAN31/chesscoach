@@ -28,12 +28,14 @@ import {
 } from "../lib/local/repo";
 import { useSession } from "../lib/session";
 import { autoSync, drainSyncQueue } from "../lib/local/sync";
+import { useToast } from "../lib/toast";
 
 type Mode = "" | "pgn" | "url";
 
 export default function ImportPage() {
   const navigate = useNavigate();
   const { user } = useSession();
+  const { push } = useToast();
   const { state: engineState, engine } = useAnalyse();
   const [mode, setMode] = useState<Mode>("");
   const [pgn, setPgn] = useState("");
@@ -45,6 +47,7 @@ export default function ImportPage() {
   const [meta, setMeta] = useState<{ games: number; queue: number }>({ games: 0, queue: 0 });
   const [syncing, setSyncing] = useState<string | null>(null);
   const [cancelled, setCancelled] = useState<boolean>(false);
+  const [armDeleteAll, setArmDeleteAll] = useState(false);
 
   const refreshLocal = useCallback(async () => {
     const [games, m] = await Promise.all([listLocalGames(), getLocalMeta()]);
@@ -111,11 +114,13 @@ export default function ImportPage() {
       try {
         const g = await api.acceptImport(toServerPayload(metaOut, rows));
         await markSynced(localId, g.id);
+        push("success", "Partie importée et analysée.");
         navigate(`/games/${g.id}`);
         return;
       } catch (syncErr) {
         const msg = String(syncErr);
         await bumpQueue(localId, msg).catch(() => {});
+        push("info", "Analysée localement — sync dès que la connexion revient.");
         navigate(`/local/${localId}`);
         return;
       }
@@ -351,17 +356,34 @@ export default function ImportPage() {
               </li>
             ))}
             <li className="flex justify-end">
-              <button
-                onClick={async () => {
-                  if (confirm("Supprimer toutes les parties locales ?")) {
-                    await resetLocalDb();
-                    void refreshLocal();
-                  }
-                }}
-                className="text-xs text-muted hover:text-ink"
-              >
-                Tout supprimer
-              </button>
+              {armDeleteAll ? (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-muted">Supprimer toutes les parties locales ?</span>
+                  <button
+                    onClick={async () => {
+                      await resetLocalDb();
+                      setArmDeleteAll(false);
+                      void refreshLocal();
+                    }}
+                    className="rounded-md border border-red-500/50 px-2 py-0.5 text-red-500 hover:bg-surface-3"
+                  >
+                    Confirmer
+                  </button>
+                  <button
+                    onClick={() => setArmDeleteAll(false)}
+                    className="rounded-md border border-line px-2 py-0.5 text-muted hover:text-ink"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setArmDeleteAll(true)}
+                  className="text-xs text-muted hover:text-ink"
+                >
+                  Tout supprimer
+                </button>
+              )}
             </li>
           </ul>
         )}

@@ -1,3 +1,5 @@
+import { useMemo, useRef, useState } from "react";
+
 interface EloSeries {
   label: string;
   color: string;
@@ -12,6 +14,8 @@ interface EloChartProps {
   eloMin?: number | null;
   eloMax?: number | null;
   height?: number;
+  /** Paliers affichés (lignes pointillées discrètes), ex. 1200, 1400… */
+  milestones?: number[];
 }
 
 const W = 940;
@@ -29,6 +33,11 @@ function labelX(t: number): string {
   return `${MOIS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+function labelFull(t: number): string {
+  const d = new Date(t);
+  return `${d.toLocaleDateString("fr-FR")} · ${labelX(t)}`;
+}
+
 export default function EloChart({
   series,
   dateMin,
@@ -36,7 +45,12 @@ export default function EloChart({
   eloMin,
   eloMax,
   height = 340,
+  milestones = [1200, 1400, 1600, 1800, 2000, 2200],
 }: EloChartProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  // Plage [0,1] du crosshair horizontal (ou null si pas de survol).
+  const [hover, setHover] = useState<number | null>(null);
+
   type Pt = { iso: string; e: number; s: number };
   const all: Pt[] = [];
   const bySeries: Pt[][] = [];
@@ -78,7 +92,7 @@ export default function EloChart({
 
   const IW = W - PAD.left - PAD.right;
   const IH = height - PAD.top - PAD.bottom;
-  const X = (t: number) => PAD.left + ((t - tLo) / tSpan) * IW;
+  const T = (t: number) => PAD.left + ((t - tLo) / tSpan) * IW;
   const Y = (e: number) => PAD.top + (1 - (e - eLo) / eSpan) * IH;
 
   const yticks: number[] = [];
@@ -89,20 +103,62 @@ export default function EloChart({
   const pathFor = (s: number) => {
     const pts = bySeries[s].filter(inF).sort((a, b) => tsi(a.iso) - tsi(b.iso));
     if (pts.length === 0) return null;
-    let d = `M ${X(tsi(pts[0].iso)).toFixed(1)} ${Y(pts[0].e).toFixed(1)}`;
+    let d = `M ${T(tsi(pts[0].iso)).toFixed(1)} ${Y(pts[0].e).toFixed(1)}`;
     let prevT: number | null = null;
     let prevE: number | null = null;
     for (const p of pts) {
       const t = tsi(p.iso);
       const e = p.e;
       if (prevT != null && prevE != null && t - prevT > 86400000 * 2) {
-        d += ` L ${X(t).toFixed(1)} ${Y(prevE).toFixed(1)}`;
+        d += ` L ${T(t).toFixed(1)} ${Y(prevE).toFixed(1)}`;
       }
-      d += ` L ${X(t).toFixed(1)} ${Y(e).toFixed(1)}`;
+      d += ` L ${T(t).toFixed(1)} ${Y(e).toFixed(1)}`;
       prevT = t;
       prevE = e;
     }
     return d;
+  };
+
+  // ----- interactivité -----
+  const hoverInfo = useMemo(() => {
+    if (hover == null) return null;
+    const xT = tLo + hover * tSpan;
+    // Point de référence : le point visible le plus proche de l'abscisse survolée.
+    let anchor: Pt | null = null;
+    let best = Number.POSITIVE_INFINITY;
+    for (const p of vis) {
+      const d = Math.abs(tsi(p.iso) - xT);
+      if (d < best) {
+        best = d;
+        anchor = p;
+      }
+    }
+    if (!anchor) return null;
+    const anchorT = tsi(anchor.iso);
+    const rows = series.map((s, idx) => {
+      const pts = bySeries[idx].filter(inF);
+      let near: Pt | null = null;
+      let b = Number.POSITIVE_INFINITY;
+      for (const p of pts) {
+        const d = Math.abs(tsi(p.iso) - anchorT);
+        if (d < b) {
+          b = d;
+          near = p;
+        }
+      }
+      return { label: s.label, color: s.color, elo: near ? near.e : null, iso: near?.iso ?? null };
+    });
+    return { anchorT, rows };
+  }, [hover, vis, bySeries, series, inF, tLo, tSpan]);
+
+  const xAnchor = hoverInfo ? T(hoverInfo.anchorT) : 0;
+
+  const onMove = (ev: React.MouseEvent<SVGSVGElement>) => {
+    const el = svgRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const rel = (ev.clientX - r.left) / r.width; // 0..1 en largeur écran
+    setHover(Math.min(1, Math.max(0, rel)));
   };
 
   return (
@@ -116,35 +172,98 @@ export default function EloChart({
           </span>
         ))}
       </div>
-      <svg viewBox={`0 0 ${W} ${height}`} className="h-auto w-full" role="img" aria-label="Courbe Elo">
-        {/* grille + axes Y */}
-        {yticks.map((e) => (
-          <g key={`y${e}`}>
-            <line x1={PAD.left} x2={W - PAD.right} y1={Y(e)} y2={Y(e)} stroke="var(--chart-grid)" strokeDasharray="3 4" strokeWidth={1} />
-            <text x={PAD.left - 8} y={Y(e) + 3} fontSize={10} fill="var(--chart-label)" textAnchor="end">
-              {Math.round(e)}
-            </text>
-          </g>
-        ))}
-        {/* axe X + dates */}
-        {xticks.map((t) => (
-          <g key={`x${t}`}>
-            <line x1={X(t)} x2={X(t)} y1={PAD.top} y2={height - PAD.bottom} stroke="var(--chart-grid)" strokeDasharray="3 4" strokeWidth={1} />
-            <text x={X(t)} y={height - PAD.bottom + 16} fontSize={10} fill="var(--chart-label)" textAnchor="middle">
-              {labelX(t)}
-            </text>
-          </g>
-        ))}
-        {/* lignes de titre d'axes */}
-        <text x={10} y={PAD.top - 8} fontSize={11} fill="var(--chart-label)">Elo</text>
-        {/* courbes */}
-        {series.map((s, idx) => {
-          const d = pathFor(idx);
-          return d ? (
-            <path key={s.label} d={d} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-          ) : null;
-        })}
-      </svg>
+      <div className="relative">
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${height}`}
+          className="h-auto w-full"
+          role="img"
+          aria-label="Courbe Elo des parties analysées (survol pour le détail)"
+          onMouseMove={onMove}
+          onMouseLeave={() => setHover(null)}
+        >
+          {/* grille + axes Y */}
+          {yticks.map((e) => (
+            <g key={`y${e}`}>
+              <line x1={PAD.left} x2={W - PAD.right} y1={Y(e)} y2={Y(e)} stroke="var(--chart-grid)" strokeDasharray="3 4" strokeWidth={1} />
+              <text x={PAD.left - 8} y={Y(e) + 3} fontSize={10} fill="var(--chart-label)" textAnchor="end">
+                {Math.round(e)}
+              </text>
+            </g>
+          ))}
+          {/* axe X + dates */}
+          {xticks.map((t) => (
+            <g key={`x${t}`}>
+              <line x1={T(t)} x2={T(t)} y1={PAD.top} y2={height - PAD.bottom} stroke="var(--chart-grid)" strokeDasharray="3 4" strokeWidth={1} />
+              <text x={T(t)} y={height - PAD.bottom + 16} fontSize={10} fill="var(--chart-label)" textAnchor="middle">
+                {labelX(t)}
+              </text>
+            </g>
+          ))}
+          {/* paliers */}
+          {milestones.map((m) =>
+            m >= eLo && m <= eHi ? (
+              <g key={`m${m}`}>
+                <line x1={PAD.left} x2={W - PAD.right} y1={Y(m)} y2={Y(m)} stroke="var(--chart-marker-border)" strokeDasharray="1 5" strokeWidth={1} opacity={0.5} />
+                <text x={PAD.left - 8} y={Y(m) + 3} fontSize={9} fill="var(--chart-label)" opacity={0.7} textAnchor="end">
+                  {m}
+                </text>
+              </g>
+            ) : null,
+          )}
+          <text x={10} y={PAD.top - 8} fontSize={11} fill="var(--chart-label)">Elo</text>
+          {/* courbes */}
+          {series.map((s, idx) => {
+            const d = pathFor(idx);
+            return d ? (
+              <path key={s.label} d={d} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+            ) : null;
+          })}
+          {/* crosshair + points au survol */}
+          {hoverInfo && (
+            <g>
+              <line
+                x1={xAnchor}
+                x2={xAnchor}
+                y1={PAD.top}
+                y2={height - PAD.bottom}
+                stroke="var(--chart-crosshair)"
+                strokeWidth={1}
+              />
+              {hoverInfo.rows.map((r) =>
+                r.elo != null ? (
+                  <circle key={r.label} cx={xAnchor} cy={Y(r.elo)} r={4} fill={r.color} stroke="var(--color-surface-2)" strokeWidth={1.5} />
+                ) : null,
+              )}
+            </g>
+          )}
+        </svg>
+
+        {/* tooltip flottant */}
+        {hoverInfo && (
+          <div
+            className="pointer-events-none absolute z-10 min-w-40 rounded-lg border border-line bg-surface-2/95 px-3 py-2 text-xs shadow-lg backdrop-blur"
+            style={{
+              left: `min(${(hover ?? 0) * 100}%, calc(100% - 1px))`,
+              transform: `translateX(${(hover ?? 1) >= 0.72 ? "-100%" : "0"})`,
+              top: 8,
+            }}
+          >
+            <p className="mb-1 font-medium text-ink">{labelFull(hoverInfo.anchorT)}</p>
+            <ul className="flex flex-col gap-1">
+              {hoverInfo.rows.map((r) => (
+                <li key={r.label} className="flex items-center justify-between gap-3">
+                  <span className="inline-flex items-center gap-1.5 text-muted">
+                    <span className="inline-block h-2 w-2 rounded-full" style={{ background: r.color }} />
+                    {r.label}
+                  </span>
+                  <b className="tabular-nums text-ink">{r.elo != null ? r.elo : "—"}</b>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
       {vis.length === 0 ? (
         <p className="text-xs text-muted">Aucun point dans cette période / plage elo.</p>
       ) : null}

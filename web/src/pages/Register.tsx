@@ -2,9 +2,12 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button, Card } from "../components/ui";
 import { api, ApiError } from "../lib/api";
+import { useSession } from "../lib/session";
+import { useToast } from "../lib/toast";
 
 export default function Register() {
   const navigate = useNavigate();
+  const { push } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [pseudo, setPseudo] = useState("");
@@ -17,10 +20,21 @@ export default function Register() {
     setBusy(true);
     try {
       await api.register(email.trim(), password, pseudo.trim());
-      navigate("/login", {
-        replace: true,
-        state: { registered: true },
-      });
+      // Auto-login : le compte est actif immédiatement → on rentre direct
+      // dans l'app (temps-avant-valeur réduit). Son historique chess.com se
+      // charge en arrière-plan au premier passage sur le dashboard.
+      try {
+        await useSession.getState().login(email.trim(), password);
+        push("success", "Bienvenue ! Ton historique chess.com se charge…");
+        navigate("/dashboard", { replace: true });
+        return;
+      } catch {
+        // Compte non activé (vérification email exigée) : retour page connexion.
+        navigate("/login", {
+          replace: true,
+          state: { registered: true },
+        });
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Inscription impossible.");
     } finally {

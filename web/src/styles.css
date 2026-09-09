@@ -6,7 +6,7 @@
   --color-surface-3: #1a2025;
   --color-line: #20262c;
   --color-ink: #e8ebee;
-  --color-muted: #8f97a1;
+  --color-muted: #a0aab4;
   --color-accent: #6fa8dc;
   --color-accent-ink: #0b0e11;
   --font-sans:
@@ -71,6 +71,16 @@ body {
   color: var(--color-accent-ink);
 }
 
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+:where(button, [role="button"], a, input, select, textarea, [tabindex]):focus:not(:focus-visible) {
+  outline: none;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -86,7 +96,7 @@ body {
   --secondary: #1a2025;
   --secondary-foreground: #e8ebee;
   --muted: #1a2025;
-  --muted-foreground: #8f97a1;
+  --muted-foreground: #a0aab4;
   --accent: #1a2025;
   --accent-foreground: #e8ebee;
   --destructive: #d9534f;
@@ -214,6 +224,8 @@ body {
   --color-chart-foreground-muted: var(--chart-foreground-muted);
   --color-chart-foreground: var(--chart-foreground);
   --color-chart-background: var(--chart-background);
+  --color-eval-up: var(--chart-4);
+  --color-eval-down: var(--chart-5);
 }
 
 .dark {

@@ -198,9 +198,35 @@ export default function Games() {
             </div>
           ))}
           {games.length === 0 && !gamesQ.isLoading ? (
-            <p className="py-16 text-center text-sm text-muted">
-              Aucune partie ne correspond à ces filtres.
-            </p>
+            gamesQ.data?.total === 0 ? (
+              <Card className="sm:col-span-4">
+                <h2 className="text-base font-semibold tracking-tight">Aucune partie analysée</h2>
+                <p className="mt-1 text-sm text-muted">
+                  Deux façons : synchroniser ton historique chess.com (rapid & blitz, le
+                  moteur du serveur analyse tout en arrière-plan) ou importer une partie
+                  précise en instantané sur ton appareil.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => navigate("/import")}
+                    className="px-3 py-1.5 text-xs"
+                  >
+                    + Importer une partie
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => navigate("/dashboard")}
+                    className="px-3 py-1.5 text-xs"
+                  >
+                    Synchroniser depuis le tableau de bord
+                  </Button>
+                </div>
+              </Card>
+            ) : (
+              <p className="py-16 text-center text-sm text-muted">
+                Aucune partie ne correspond à ces filtres.
+              </p>
+            )
           ) : null}
         </div>
       )}

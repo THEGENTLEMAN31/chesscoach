@@ -3,10 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Button, Card, Spinner, Stat } from "../components/ui";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
+import { useToast } from "../lib/toast";
 import type { PlayerProfile } from "../lib/profile-types";
 
 export default function Profile() {
   const { user } = useSession();
+  const { push } = useToast();
   const [timeClass, setTimeClass] = useState("global");
   const [recomputing, setRecomputing] = useState(false);
   const [objRapid, setObjRapid] = useState("");
@@ -50,8 +52,9 @@ export default function Profile() {
       const blitz = objBlitz === "" ? null : Number(objBlitz);
       await api.setObjectives({ rapid, blitz });
       await Promise.all([profileQ.refetch(), objectivesQ.refetch()]);
+      push("success", "Objectif mis à jour.");
     } catch {
-      /* message via UI */
+      push("error", "Impossible d'enregistrer l'objectif.");
     } finally {
       setSavingObj(false);
     }

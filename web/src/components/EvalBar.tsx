@@ -14,10 +14,11 @@ export default function EvalBar({ wp, label }: EvalBarProps) {
     <div className="flex select-none flex-col items-center gap-1.5">
       <span className="text-[10px] font-semibold text-muted">+</span>
       <div className="relative h-28 w-3 overflow-hidden rounded-full bg-surface-3">
-        <div className="absolute inset-0 w-full bg-white/70" style={{ display: "none" }} />
         {fillPct > 0 && (
           <div
-            className="absolute w-full rounded-full bg-white/80 transition-all duration-300"
+            className={`absolute w-full transition-all duration-300 ${
+              up ? "rounded-t-full bg-eval-up/85" : "rounded-b-full bg-eval-down/85"
+            }`}
             style={
               up
                 ? { bottom: "50%", height: `${fillPct}%` }

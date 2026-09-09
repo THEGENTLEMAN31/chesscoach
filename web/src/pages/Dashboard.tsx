@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { ChevronRightIcon, BoltIcon, RefreshIcon, ChartIcon } from "../components/icons";
+import { Link, useNavigate } from "react-router-dom";
+import { ChevronRightIcon, BoltIcon, RefreshIcon, ChartIcon, TargetIcon, ListIcon } from "../components/icons";
 import { Button, Card, Spinner, Stat } from "../components/ui";
 import { api } from "../lib/api";
 import {
   CLASS_COLOR,
   CLASS_LABEL,
+  CONCEPT_LABEL,
   formatDate,
   TIME_CLASS_LABEL,
 } from "../lib/constants";
 import { useSession } from "../lib/session";
+import { useToast } from "../lib/toast";
 import type { ClassCount } from "../lib/types";
 
 const CLASS_ORDER = ["best", "good", "inaccuracy", "mistake", "blunder"];
@@ -44,6 +46,8 @@ function ClassRow({ c }: { c: ClassCount }) {
 
 export default function Dashboard() {
   const { user } = useSession();
+  const { push } = useToast();
+  const navigate = useNavigate();
   const statsQ = useQuery({ queryKey: ["stats"], queryFn: api.stats });
   const syncQ = useQuery({
     queryKey: ["sync"],
@@ -59,12 +63,21 @@ export default function Dashboard() {
     queryKey: ["form-games"],
     queryFn: () => api.games({ status: "analyzed", limit: "20" }),
   });
+  // Prochain exercice de la rotation : « à travailler aujourd'hui » —
+  // un de TES vrais coups ratés, pas un puzzle générique.
+  const nextExQ = useQuery({
+    queryKey: ["next-exercise"],
+    queryFn: () => api.exercices({ nombre: "1" }),
+  });
+  const nextExercise = nextExQ.data?.[0] ?? null;
 
   const running = syncQ.data?.running ?? false;
+  const pending = syncQ.data?.pending_analysis ?? 0;
   const lastRun = syncQ.data?.last;
 
   const startSync = async () => {
     await api.sync(3);
+    push("info", `${user?.chesscom_username ?? "Ton"} historique chess.com se charge…`);
     await syncQ.refetch();
   };
 
@@ -136,6 +149,117 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {isEmpty ? (
+          <Card className="sm:col-span-4">
+            <h2 className="text-base font-semibold tracking-tight">
+              Bienvenue, {user?.chesscom_username}
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-muted">
+              ChessCoach analyse tes parties et transforme tes vrais coups ratés en
+              exercices personnels. Première étape : récupérer ton historique chess.com.
+            </p>
+            <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+              <div
+                className={`h-full rounded-full bg-accent transition-all ${
+                  running ? "animate-pulse" : ""
+                }`}
+                style={{ width: running ? "100%" : "0%" }}
+              />
+            </div>
+            <p className="mt-2 text-sm text-muted">
+              {running
+                ? `Analyse en cours — ${pending} position${pending > 1 ? "s" : ""} en attente. Reviens dans quelques minutes : les cartes ci-dessous se rempliront toutes seules.`
+                : "Prêt à lancer ta première synchronisation automatique."}
+            </p>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {[
+                {
+                  icon: ChartIcon,
+                  title: "Profil pédagogique",
+                  text: "Forces, faiblesses et tendances calculées sur toutes tes parties analysées.",
+                  to: "/progression",
+                },
+                {
+                  icon: TargetIcon,
+                  title: "Exercices sur mesure",
+                  text: "Tes bévues rejouées en positions d'exercice, classées par concept à travailler.",
+                  to: "/training",
+                },
+                {
+                  icon: ListIcon,
+                  title: "Révision coup par coup",
+                  text: "Relis chaque partie avec l'évaluation moteur et le coup que tu aurais dû jouer.",
+                  to: "/games",
+                },
+              ].map((s) => (
+                <Link
+                  key={s.title}
+                  to={s.to}
+                  className="group flex flex-col gap-2 rounded-xl border border-line bg-surface-2/60 p-3 transition-colors hover:border-accent/50"
+                >
+                  <s.icon className="h-4.5 w-4.5 text-accent" />
+                  <span className="text-sm font-medium text-ink">{s.title}</span>
+                  <span className="text-xs leading-relaxed text-muted">{s.text}</span>
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-accent opacity-0 transition-opacity group-hover:opacity-100">
+                    Découvrir
+                    <ChevronRightIcon className="h-3.5 w-3.5" />
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </Card>
+        ) : (
+          <Card className="sm:col-span-4 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <TargetIcon className="h-4 w-4 text-accent" />
+              <h2 className="text-sm font-medium text-muted">À travailler</h2>
+            </div>
+            {nextExQ.isLoading ? (
+              <div className="flex h-16 items-center justify-center">
+                <Spinner className="h-5 w-5 text-muted" />
+              </div>
+            ) : nextExercise ? (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-md border border-line bg-surface-3/60 px-2.5 py-1 text-xs text-accent">
+                    {nextExercise.concept
+                      ? CONCEPT_LABEL[nextExercise.concept] ?? nextExercise.concept
+                      : "Position clé"}
+                  </span>
+                  {nextExercise.phase ? (
+                    <span className="rounded-md border border-line bg-surface-3/60 px-2.5 py-1 text-xs text-muted">
+                      {nextExercise.phase}
+                    </span>
+                  ) : null}
+                  <span className="text-xs text-muted">
+                    rassise dans ta partie du{" "}
+                    {nextExercise.end_time ? formatDate(nextExercise.end_time) : "—"}
+                  </span>
+                </div>
+                <p className="text-sm text-muted">
+                  Trouve le coup du moteur — tu avais joué{" "}
+                  <b className="text-ink">{nextExercise.san}</b>
+                  {nextExercise.winprob_loss != null
+                    ? ` (−${nextExercise.winprob_loss} pts de probabilité)`
+                    : ""}.
+                </p>
+                <div className="mt-1">
+                  <Button
+                    onClick={() => navigate("/training")}
+                    className="px-3 py-1.5 text-xs"
+                  >
+                    Ouvrir l'entraînement
+                    <ChevronRightIcon className="ml-1 h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted">
+                Analyse quelques parties pour voir apparaître tes exercices personnels.
+              </p>
+            )}
+          </Card>
+        )}
         <Card className="sm:col-span-2">
           <h2 className="text-sm font-medium text-muted">Cadences</h2>
           {statsQ.isLoading ? (
@@ -200,6 +324,16 @@ export default function Dashboard() {
               {running ? "En cours…" : "Synchroniser"}
             </Button>
           </div>
+          {running && (
+            <div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+                <div className="h-full animate-pulse rounded-full bg-accent" style={{ width: `${Math.max(8, Math.min(100, 100 - pending * 2))}%` }} />
+              </div>
+              <p className="mt-1.5 text-xs text-muted">
+                Analyse en cours — {pending} position{pending > 1 ? "s" : ""} en attente.
+              </p>
+            </div>
+          )}
           {lastRun ? (
             <div className="grid grid-cols-3 gap-3">
               <Stat label="Parties vues" value={lastRun.games_seen} className="text-sm [&>div.text-2xl]:text-lg" />
