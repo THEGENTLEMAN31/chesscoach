@@ -89,21 +89,20 @@ export default function EloChart({
   const pathFor = (s: number) => {
     const pts = bySeries[s].filter(inF).sort((a, b) => tsi(a.iso) - tsi(b.iso));
     if (pts.length === 0) return null;
-    let d = "";
+    let d = `M ${X(tsi(pts[0].iso)).toFixed(1)} ${Y(pts[0].e).toFixed(1)}`;
     let prevT: number | null = null;
     let prevE: number | null = null;
     for (const p of pts) {
       const t = tsi(p.iso);
       const e = p.e;
       if (prevT != null && prevE != null && t - prevT > 86400000 * 2) {
-        // palier : établir la valeur précédente jusqu'à la nouvelle date
         d += ` L ${X(t).toFixed(1)} ${Y(prevE).toFixed(1)}`;
       }
       d += ` L ${X(t).toFixed(1)} ${Y(e).toFixed(1)}`;
       prevT = t;
       prevE = e;
     }
-    return d.slice(1);
+    return d;
   };
 
   return (
@@ -142,7 +141,7 @@ export default function EloChart({
         {series.map((s, idx) => {
           const d = pathFor(idx);
           return d ? (
-            <path key={s.label} d={`M ${d}`} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+            <path key={s.label} d={d} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
           ) : null;
         })}
       </svg>
