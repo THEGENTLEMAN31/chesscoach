@@ -26,7 +26,7 @@ class SyncManager:
                  analyzer: AnalyzerClient, book: OpeningBook) -> None:
         self._db = db
         self._pipeline = SyncPipeline(db, chesscom, analyzer, book)
-        self._lock = asyncio.Lock()
+        self._locks: dict[str, asyncio.Lock] = {}
         self._tasks: dict[str, asyncio.Task] = {}
         self._pending: set[str] = set()
         self._last: dict[str, dict] = {}
@@ -61,8 +61,11 @@ class SyncManager:
                 "games_seen": 0, "games_new": 0, "games_analyzed": 0}
 
     async def _run(self, username: str, months: int, run_id: int) -> None:
+        # Verrou PAR UTILISATEUR : les pipelines de comptes différents ne se
+        # bloquent plus mutuellement (le verrou global serialisait tout le monde).
+        lock = self._locks.setdefault(username, asyncio.Lock())
         try:
-            async with self._lock:
+            async with lock:
                 result = await self._pipeline.sync(username, months, run_id=run_id)
                 # Analyse des parties 'synced' dans la foulée, par lots reprenables.
                 analyzed = 0
@@ -95,6 +98,8 @@ class SyncManager:
                                     "status": "error", "error": str(exc)}
         finally:
             self._tasks.pop(username, None)
+            if username not in self._tasks:
+                self._locks.pop(username, None)
 
     async def status(self, username: str) -> dict:
         pending = await self._db.execute(

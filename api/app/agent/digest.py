@@ -162,9 +162,11 @@ async def generate_digest(db: aiosqlite.Connection, username: str, model=None, d
         narrative = template_narrative(facts, username)
     period = date.today().isoformat()
     cur = await db.execute(
-        """INSERT INTO digests (period, facts, narrative, status) VALUES (?,?,?,?)
-           ON CONFLICT(id) DO NOTHING""",
-        (period, json.dumps(facts, ensure_ascii=False, default=str), narrative, "done"),
+        """INSERT INTO digests (username, period, facts, narrative, status)
+           VALUES (?,?,?,?,?)
+           ON CONFLICT(username, period) DO UPDATE SET
+             facts=excluded.facts, narrative=excluded.narrative, status='done'""",
+        (username, period, json.dumps(facts, ensure_ascii=False, default=str), narrative, "done"),
     )
     await db.commit()
     return {"period": period, "facts": facts, "narrative": narrative, "usage": usage}

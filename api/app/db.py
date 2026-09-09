@@ -15,7 +15,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -203,6 +203,15 @@ MIGRATIONS: dict[int, str] = {
         blitz      INTEGER,
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    """,
+    8: """
+    -- Un digest par utilisateur et par jour : ON CONFLICT(username, period) doit se déclencher.
+    -- Dédup d'abord (les doublons du bug ON CONFLICT(id) peuvent exister), garde le plus récent.
+    DELETE FROM digests
+    WHERE id NOT IN (
+        SELECT MAX(id) FROM digests GROUP BY username, period
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uk_digests_user_period ON digests(username, period);
     """,
 }
 

@@ -149,9 +149,15 @@ class SyncPipeline:
         fen_list = [parsed.fen_start] + [m.fen_before for m in parsed.moves]
         opening = self.book.classify_fens(fen_list) if self.book._loaded else None
 
-        row = await self.db.execute(
-            "SELECT id FROM games WHERE pgn=? AND username=?", (pgn, username)
-        )
+        cid = _chesscom_game_id(raw)
+        if cid:
+            row = await self.db.execute(
+                "SELECT id FROM games WHERE chesscom_id=? AND username=?", (cid, username)
+            )
+        else:
+            row = await self.db.execute(
+                "SELECT id FROM games WHERE pgn=? AND username=?", (pgn, username)
+            )
         if await row.fetchone():
             return False
 

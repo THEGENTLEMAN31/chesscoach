@@ -103,9 +103,10 @@ async def stats(db: aiosqlite.Connection, username: str) -> dict:
     )
     by_class = [dict(r) for r in await cur.fetchall()]
     cur = await db.execute(
-        """SELECT classification, COUNT(*) AS n FROM plies
-           WHERE is_player=1 AND classification IS NOT NULL
-           GROUP BY classification ORDER BY n DESC""", ()
+        """SELECT p.classification, COUNT(*) AS n
+           FROM plies p JOIN games g ON g.id = p.game_id
+           WHERE g.username=? AND p.is_player=1 AND p.classification IS NOT NULL
+           GROUP BY p.classification ORDER BY n DESC""", (username,)
     )
     by_class_moves = {r["classification"]: r["n"] for r in await cur.fetchall()}
     return {"by_time_class": by_class, "move_classifications": by_class_moves}

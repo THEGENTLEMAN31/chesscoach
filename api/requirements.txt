@@ -8,3 +8,5 @@ sqlalchemy
 httpx
 fastapi-users[sqlalchemy]
 python-multipart
+# Retry/backoff sur chess.com API et moteur (erreurs transitoires)
+tenacity>=8.2.0
