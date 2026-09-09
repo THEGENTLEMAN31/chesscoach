@@ -260,3 +260,94 @@ global sauf pour l'admin/seed).
 - La data `data/chesscoach.db` (191 Mo, 320k plis) est le jeu de test principal — ne jamais la supprimer/corrompre (migrations versionnées uniquement).
 - `pkill -f` avec un motif présent dans la ligne de commande du shell opencode → tue le shell. Viser par PID (`pgrep -f ... | head -1`).
 - `admin@chesscoach.local` est rejeté par email-validator (domaine réservé) → utiliser `.io`.
+---
+
+# Audit experts (5) — « restes » & axes d'amélioration (09/09)
+
+5 sous-agents experts lancés en parallèle (UX/UI/DA, Mobile, Échecs/Pédagogie, Backend/Scaling, Onboarding/Rétention),
+chacun avec exploration du code + recherches web. Rapport consolidé ci-dessous. Rien n'est encore implémenté
+(excepté le fix CSS ci-après si fait). Amorces de TO-DO, non engagées sauf mention.
+
+## 0. BUG CONFIRMÉ (vérifié) — à corriger en premier
+- **CSS variables charts cassées** : `web/src/styles.css` lignes 196-216, bloc `@theme inline` référence
+  `var(----chart-*)` (**4 tirets**) alors que les variables existent en `--chart-*` (2 tirets) dans `:root`
+  (lignes 29-43, 229-240). => toutes les couleurs de chart (scale/labels/tooltip/crosshair/grid/markers) sont
+  undefined/fallback. Fix trivial : `----chart` → `--chart` sur ces ~21 lignes. **Fait : ✅ corrigé (09/09, sed global, non commité).**
+
+## 1. UX / UI / DA
+- **EloChart non-interactif** (SVG statique, pas de tooltip/hover) alors que `EvalCurve` utilise déjà visx `LineChart`
+  avec tooltip — incoherence sur la page centrale. → migrer EloChart vers visx + tooltips + annotations de paliers (effort 2-3h, ROI élevé).
+- **EvalBar quasi invisible en light mode** (`bg-white/80` sur fond blanc), une couleur, 32 px. → 2 couleurs vert/rouge, visible light, +tooltip.
+- **Contraste `text-muted` limite** pour textes 10-13px en dark (`--color-muted:#8f97a1`). → monter ~`#a0aab4`.
+- **Aucune micro-interaction de feedback** (sync, correction exercice, quiz, import) : pas de toast/animation de succès.
+- **Empty states plats** sur toutes les pages (Dashboard vide = premier écran sans illustration ni CTA).
+- **Accessibilité** : pas de `focus-visible`, cibles tactiles < 44px, aria-labels incohérents (PlyItem/VariantsPanel).
+- **Design system incohérent** : couleurs hardcodées (`#3fb562`, cases échiquier `#ecece8`/`#c9c6bf` dans Board.tsx),
+  double système de variables, `ShimmeringText` mort (jamais utilisé), `confirm()` natif dans Import.tsx.
+- Top priorité : fix CSS bug → contraste → EloChart → focus-visible → micro-interactions → empty states.
+
+## 2. Mobile / PWA
+- **Pré-cache `.wasm` manquant** (stockfish + sql.js) dans `vite.config.ts` workbox (grep `assets/**/*.{js,css,woff2}`).
+  → ajouter `wasm` + `engine/**` ; **cache API en NetworkFirst** + `navigateFallbackDenylist:[/^\/api/]`.
+  ⚠ purge du cache à la déconnexion entre comptes (`caches.delete("api-cache")` dans logout).
+- **Icônes PWA SVG non installables** (iOS/Android) → générer PNG (`@vite-pwa/assets-generator`),
+  `apple-touch-icon-180`, `id:"/"`, `screenshots` dans manifest.
+- **Session non persistée** : au boot, réseau KO → `api.me()` échoue → déconnecté (inaccessible aux parties locales).
+  → persister session (zustand persist), distinguer erreur réseau (TypeError) vs 401 (seul vrai logout).
+- Tactile échiquier : activer click-to-move par défaut sur mobile, tailles de cibles ≥44px.
+
+## 3. Échecs / Pédagogie
+- **Concept `candidate` = fourre-tout** : toute erreur non reconnue y tombe (`concepts.py:346`) ~30-50% des cas,
+  trop vague pour être entraînable. → soit le supprimer, soit le subdiviser (voir stratégie ci-dessous).
+- **Concepts trop tactiques** (7/15), **peu de stratégie** : manquent espace, activité des pièces, chaînes de pions,
+  faiblesse du roi (hors mat), échanges, zwischenzug, surcharge, déviation, découverte.
+- **Tactique seule insuffisante** : pas d'exercices de stratégie (« quel est le plan »), finales (Lucena/Philidor/
+  opposition/technique de promotion), évaluation, ni entrainement au **processus de calcul** (checklist CCT,
+  vérification des coups de l'adversaire).
+- **Pas de plan d'entraînement structuré** : `_prescribe()` reste textuel, non relié au flux Training.
+- **Rotation espacée simplifiée** (binaire raté/réussi) sans intervalle SM-2/FSRS ; pas de suivi longitudinal par
+  concept (dégradation non détectée / pas de courbe).
+- Divers : quiz d'ouverture personnel absent (répertoire calculé mais non entraînable), patterns de mat non couverts,
+  détection fragile (fourchette côté moteur seul, faiblesse pions progressive non détectée).
+- 5 piliers temps (amateur 1200-2000) : tactique 30-40% / stratégie 25-35% / finales 15-20% / ouvertures 10-15% /
+  analyse de ses parties 15-25%. ChessCoach ne couvre que le 1er (+partiellement le 5e).
+
+## 4. Backend / Archi / Scaling
+- **Rate limiting absent** (register/sync/etudes coûteux) → slowapi.
+- **`asyncio.Lock` GLOBAL** dans `services/manager.py` serialise TOUS les utilisateurs → `dict[str, Lock]` par utilisateur.
+- **JWT secret par défaut faible** (`config.py:50 "dev-secret-change-me"`) → garde-fou fatal si inchangé en prod.
+- **CSRF** : cookie SameSite=Lax sans token → pattern double-submit pour mutations authentifiées cookie.
+- **Aucun retry/backoff** sur chess.com (`chesscom.py`, 429/5xx tue le sync) ni sur analyzer → retry exponentiel 3x ;
+  parties marquées `error` définitivement → ne marquer error qu'après 3 échecs.
+- **Dedup par PGN fragile** → utiliser `chesscom_id` (UNIQUE(username, chesscom_id)) en clé.
+- **Pas de CORS** (gênant en dev) ; **pas de logs structurés/métriques/request_id**.
+- **`digest.py` `ON CONFLICT(id)` ne se déclenche jamais** (id auto) → doublon digest. Fix : `UNIQUE(username, period)`
+  + `ON CONFLICT(username, period) DO UPDATE`.
+- **`data_service.stats()` PAS scopé par username** (bug agent : stats tous comptes) → JOIN games WHERE username.
+- `profile_history` croît sans limite ; `sync_auto_interval_h`/`sync_auto_initial_delay` configurés MAIS inutilisés
+  (pas de sync périodique) ; `OpeningBook._directory()` ignore le paramètre.
+- SQLite WAL **adéquat jusqu'à ~50 utilisateurs simultanés** → migration Postgres prématurée.
+
+## 5. Onboarding / Rétention
+- **Temps-avant-valeur trop long** : inscription → données utiles = heures (sync + analyse batch) sans feedback ni
+  guidage. **Aucun mécanisme de « pull »** (pas de notif, digest non distribué, pas de streak).
+- Priorités :
+  1. **Auto-login post-inscription** (Register.tsx, ROi ultra-élevé, effort faible).
+  2. **Dashboard « première visite »** (wizard 3-4 étapes, barre de progression sync, teases pages, CTA objectif).
+  3. **Empty states instructifs** partout.
+  4. **Streak d'entraînement quotidien** (table + UI + freeze) — levier rétention #1 (modèle Duolingo).
+  5. **Notifications push PWA** (rappel quotidien, streak en danger, nouvelles parties, digest).
+  6. **Digest exploité** : généré mais jamais distribué → email hebdo (Resend déjà présent) + version visuelle + cron.
+  7. **« Exercice du jour »** en carte prioritaire Dashboard.
+  8. Barre de progression vers l'objectif Elo (pas seulement Profil) + badges simples.
+
+## Synthèse priorisée (cross-expert, ROI décroissant)
+1. Fix bug CSS charts (`--chart`) — 15 min, global. ✅ si corrigé
+2. Onboarding : auto-login + dashboard 1re visite + empty states (temps-avant-valeur heures→minutes)
+3. Rétention : streak + notifications push + exercice du jour
+4. Backend robustness : rate limiting, retry chess.com & analyzer, lock par utilisateur, garde-fou JWT, fixes digest/stats scope
+5. Échecs : sortir `candidate` du fourre-tout + ajouter concepts stratégie + exercices finales/stratégie + plan hebdo + vraie répétition espacée
+6. Mobile : précacher WASM + icônes PNG PWA + session persistée offline
+7. UX polish : EloChart interactif, EvalBar, micro-interactions, accessibilité
+
+> Statut : nota bene / TO-DO à traiter au fil des prochaines sessions. Non engagé sauf indication.
