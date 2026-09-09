@@ -20,8 +20,26 @@ from .data_service import etude_stats
 logger = logging.getLogger(__name__)
 
 ERRORS = ("blunder", "mistake")
-# Objectifs Elo par format (la cible de l'utilisateur n'est pas la même partout).
+# Objectifs Elo par défaut par format (surchargés par l'utilisateur via
+# player_objectives, cf. get_objectives).
 ELO_TARGETS = {"rapid": 2000, "blitz": 1800}
+
+SUPPORTED_OBJECTIVE_CLASSES = ("rapid", "blitz")
+
+
+async def get_objectives(db: aiosqlite.Connection, username: str) -> dict:
+    """Objectifs Elo de l'utilisateur (cibles par format), avec repli sur les défauts."""
+    targets = dict(ELO_TARGETS)
+    cur = await db.execute(
+        "SELECT rapid, blitz FROM player_objectives WHERE username=?",
+        (username,),
+    )
+    row = await cur.fetchone()
+    if row:
+        for cls in SUPPORTED_OBJECTIVE_CLASSES:
+            if row[cls] is not None:
+                targets[cls] = row[cls]
+    return targets
 CAUSE_LABELS = {
     "temps": "Joue trop vite (< 5 s)",
     "temps_flag": "Décision en flag ( < 2 s)",
@@ -34,10 +52,12 @@ CAUSE_TZ = getattr(settings, "profile_tz_offset_h", 2)
 
 
 # ------------------------------------------------------------------ utilitaires
-def _french_date(ts: int) -> str:
+def _french_date(ts: int | None) -> str:
+    if not ts:
+        return ""
     try:
         return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d")
-    except (ValueError, OSError):
+    except (ValueError, OSError, TypeError, OverflowError):
         return ""
 
 
@@ -103,11 +123,13 @@ async def _game_rows(db: aiosqlite.Connection, username: str,
 # ------------------------------------------------------------------ aggrégations
 def _aggregate(games: list[dict], errors: list[dict], moves: list[dict],
                username: str, time_class: str | None = None,
-               etudes: dict | None = None) -> dict:
+               etudes: dict | None = None,
+               elo_targets: dict | None = None) -> dict:
     """Agrège les données déjà chargées en base en un profil complet.
 
     `games`/`errors`/`moves` doivent déjà être filtrés par `time_class` (ou tous
     formats si `None`, ce qui correspond au profil « global »).
+    `elo_targets` : cibles Elo par format (défauts globaux si None).
     """
     import chess as _chess  # noqa: PLC0415
 
@@ -333,7 +355,8 @@ def _aggregate(games: list[dict], errors: list[dict], moves: list[dict],
         cognitive.append("Profil équilibré : aucune faiblesse cognitive dominante détectée.")
 
     # ------- objectif long terme (niveau 14, estimation) — cible propre au format
-    target = ELO_TARGETS.get(time_class)  # None pour le profil « global »
+    targets = elo_targets or ELO_TARGETS
+    target = targets.get(time_class)  # None pour le profil « global »
     if target is not None and latest_elo is not None:
         remaining = max(0, target - latest_elo)
         months_est = max(1, round(remaining / 25))
@@ -406,7 +429,7 @@ def _aggregate(games: list[dict], errors: list[dict], moves: list[dict],
             "gap": remaining,
             "months_estimated": months_est,
             "progression_pct": progression_pct,
-            "targets": ELO_TARGETS,
+            "targets": targets,
         },
         "strengths": strengths,
         "weaknesses": [
@@ -519,7 +542,8 @@ async def _compute(db: aiosqlite.Connection, username: str,
     errors = await _errors(db, username, time_class)
     moves = await _player_moves(db, username, time_class)
     etudes = await etude_stats(db, username, time_class)
-    return _aggregate(games, errors, moves, username, time_class, etudes)
+    targets = await get_objectives(db, username)
+    return _aggregate(games, errors, moves, username, time_class, etudes, targets)
 
 
 async def get_profile(db: aiosqlite.Connection, username: str, recompute: bool = False,
@@ -590,18 +614,19 @@ async def get_all(db: aiosqlite.Connection, username: str, recompute: bool = Fal
     errs = await _errors(db, username)
     mv = await _player_moves(db, username)
     etudes_global = await etude_stats(db, username)
+    targets = await get_objectives(db, username)
     profiles = {
-        "global": _aggregate(rows, errs, mv, username, None, etudes_global),
+        "global": _aggregate(rows, errs, mv, username, None, etudes_global, targets),
         "rapid": _aggregate([g for g in rows if g["time_class"] == "rapid"],
                             [e for e in errs if e["time_class"] == "rapid"],
                             [m for m in mv if m["time_class"] == "rapid"],
                             username, "rapid",
-                            await etude_stats(db, username, "rapid")),
+                            await etude_stats(db, username, "rapid"), targets),
         "blitz": _aggregate([g for g in rows if g["time_class"] == "blitz"],
                             [e for e in errs if e["time_class"] == "blitz"],
                             [m for m in mv if m["time_class"] == "blitz"],
                             username, "blitz",
-                            await etude_stats(db, username, "blitz")),
+                            await etude_stats(db, username, "blitz"), targets),
     }
     for tc, prof in profiles.items():
         await db.execute(

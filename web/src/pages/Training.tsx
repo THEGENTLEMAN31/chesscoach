@@ -5,7 +5,11 @@ import { Chess, type Square } from "chess.js";
 import { Board } from "../components/Board";
 import { Button, Card } from "../components/ui";
 import { api } from "../lib/api";
-import { CONCEPT_LABEL, CONCEPT_LIST, formatDate } from "../lib/constants";
+import {
+  CONCEPT_LABEL,
+  CONCEPT_LIST,
+  formatDate,
+} from "../lib/constants";
 import {
   legalMoveTargets,
   pieceAt,
@@ -17,7 +21,7 @@ import type { Settings } from "../lib/game/settings";
 import { loadSettings } from "../lib/game/settings";
 import type { PlayerProfile } from "../lib/profile-types";
 import { useSession } from "../lib/session";
-import type { Exercise } from "../lib/types";
+import type { EtudeStats, Exercise } from "../lib/types";
 import { ChevronRightIcon } from "../components/icons";
 
 type PendingPromo = { from: Square; to: Square } | null;
@@ -28,10 +32,13 @@ export default function Training() {
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [concept, setConcept] = useState(searchParams.get("concept") ?? "");
+  const [timeClass, setTimeClass] = useState("");
+  const [gravity, setGravity] = useState("blunder");
   const [idx, setIdx] = useState(0);
   const [proposed, setProposed] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [score, setScore] = useState({ correct: 0, total: 0 });
+  const [etudes, setEtudes] = useState<EtudeStats | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [boardFen, setBoardFen] = useState<string | null>(null);
   const [selected, setSelected] = useState<Square | null>(null);
@@ -39,9 +46,13 @@ export default function Training() {
   const [opponentReply, setOpponentReply] = useState<string | null>(null);
   const [settings] = useState<Settings>(loadSettings);
 
-  const loadExercises = (c: string) => {
+  const loadExercises = (c: string, tc?: string, grav?: string) => {
+    const params: Record<string, string> = { nombre: "6" };
+    if (c) params.concept = c;
+    if (tc) params.time_class = tc;
+    if (grav && grav !== "all") params.classification = grav;
     api
-      .exercices(c || undefined)
+      .exercices(params)
       .then((ex) => {
         setExercises(ex);
         setIdx(0);
@@ -60,7 +71,11 @@ export default function Training() {
       .profile("global")
       .then((p) => setProfile(p as unknown as PlayerProfile))
       .catch(() => {});
-    loadExercises(searchParams.get("concept") ?? "");
+    api
+      .etudeStats()
+      .then((s) => setEtudes(s))
+      .catch(() => {});
+    loadExercises(searchParams.get("concept") ?? "", "", "blunder");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -103,21 +118,27 @@ export default function Training() {
     setRevealed(true);
     setSelected(null);
     setOpponentReply(null);
-    api
-      .recordEtude({
-        username: user?.chesscom_username ?? "",
-        time_class: "global",
-        game_id: exercise.game_id,
-        ply: exercise.ply,
-        fen: exercise.fen_before,
-        san: exercise.san,
-        best_move_uci: exercise.best_move_uci,
-        best_move_san: exercise.best_move_san,
-        concept: exercise.concept ?? undefined,
-        attempt: res.uci,
-        correct: ok,
-      })
-      .catch(() => {});
+      api
+        .recordEtude({
+          username: user?.chesscom_username ?? "",
+          time_class: "global",
+          game_id: exercise.game_id,
+          ply: exercise.ply,
+          fen: exercise.fen_before,
+          san: exercise.san,
+          best_move_uci: exercise.best_move_uci,
+          best_move_san: exercise.best_move_san,
+          concept: exercise.concept ?? undefined,
+          attempt: res.uci,
+          correct: ok,
+        })
+        .then(() =>
+          api
+            .etudeStats()
+            .then((s) => setEtudes(s))
+            .catch(() => {}),
+        )
+        .catch(() => {});
     if (exercise.ply !== null && exercise.ply !== undefined) {
       api
         .game(exercise.game_id)
@@ -220,7 +241,7 @@ export default function Training() {
           <button
             onClick={() => {
               setConcept("");
-              loadExercises("");
+              loadExercises("", timeClass, gravity);
             }}
             className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
               concept === "" ? "border-accent bg-accent text-accent-ink" : "border-line text-muted hover:border-surface-3 hover:text-ink"
@@ -233,7 +254,7 @@ export default function Training() {
               key={k}
               onClick={() => {
                 setConcept(k);
-                loadExercises(k);
+                loadExercises(k, timeClass, gravity);
               }}
               className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                 concept === k
@@ -244,6 +265,53 @@ export default function Training() {
               {CONCEPT_LABEL[k]}
             </button>
           ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-1">
+            {(
+              [
+                { value: "", label: "Toutes cadences" },
+                { value: "rapid", label: "Rapide" },
+                { value: "blitz", label: "Blitz" },
+              ] as const
+            ).map((tc) => (
+              <button
+                key={tc.value}
+                onClick={() => {
+                  setTimeClass(tc.value);
+                  loadExercises(concept, tc.value, gravity);
+                }}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  timeClass === tc.value ? "bg-surface-3 text-ink" : "text-muted hover:text-ink"
+                }`}
+              >
+                {tc.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-1">
+            {(
+              [
+                { value: "blunder", label: "Gaffes" },
+                { value: "blunder,mistake", label: "+ erreurs" },
+                { value: "blunder,mistake,inaccuracy", label: "+ imprécisions" },
+              ] as const
+            ).map((g) => (
+              <button
+                key={g.value}
+                onClick={() => {
+                  setGravity(g.value);
+                  loadExercises(concept, timeClass, g.value);
+                }}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  gravity === g.value ? "bg-surface-3 text-ink" : "text-muted hover:text-ink"
+                }`}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -401,6 +469,47 @@ export default function Training() {
               )}
             </div>
           )}
+        </Card>
+
+        <Card>
+          <h2 className="text-sm font-semibold tracking-tight">Suivi par concept</h2>
+          {etudes && etudes.by_concept.length > 0 ? (
+            <ul className="mt-2 flex flex-col gap-2">
+              {etudes.by_concept.map((c) => (
+                <li key={c.concept ?? "?"} className="flex flex-col gap-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-xs text-ink">
+                      {c.concept ? (CONCEPT_LABEL[c.concept] ?? c.concept) : "Général"}
+                    </span>
+                    <span className="text-[11px] text-muted tabular-nums">
+                      {c.correct}/{c.n} réussi{c.n > 1 ? "s" : ""} · {c.correct_rate}%
+                    </span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-surface-3">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.min(100, c.correct_rate)}%`,
+                        backgroundColor: c.correct_rate >= 80 ? "#3fb562" : c.correct_rate >= 50 ? "#d9a441" : "#d9534f",
+                      }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-muted">
+              Réponds à quelques exercices pour voir ta maîtrise par concept. Un concept à
+              ≥80% est considéré comme bien travaillé.
+            </p>
+          )}
+          {etudes && etudes.n > 0 ? (
+            <p className="mt-2 text-xs text-muted">
+              Global : <b className="text-ink">{etudes.correct_rate}%</b> de réussite sur{" "}
+              <b className="text-ink">{etudes.n}</b> tentative{etudes.n > 1 ? "s" : ""} (
+              {etudes.last_7d} ces 7 derniers jours).
+            </p>
+          ) : null}
         </Card>
       </div>
     </div>

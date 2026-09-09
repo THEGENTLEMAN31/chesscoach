@@ -104,18 +104,23 @@ export const api = {
       `/api/profile/history${timeClass ? qs({ time_class: timeClass }) : ""}`,
     ),
 
+  objectives: () =>
+    request<{ username: string; targets: Record<string, number> }>("/api/profile/objectives"),
+
+  setObjectives: (targets: { rapid?: number | null; blitz?: number | null }) =>
+    request<{ username: string; targets: Record<string, number> }>("/api/profile/objectives", {
+      method: "PUT",
+      body: JSON.stringify(targets),
+    }),
+
   digestLatest: () => request<DigestResp | null>("/api/digest/latest"),
 
   digestGenerate: () =>
     request<DigestResp>("/api/digest/generate", { method: "POST" }),
 
   // ------------------------------------------------------------- training
-  exercices: (concept?: string, nombre = 6, timeClass?: string) =>
-    request<Exercise[]>(`/api/exercices${qs({
-      nombre: String(nombre),
-      ...(concept ? { concept } : {}),
-      ...(timeClass ? { time_class: timeClass } : {}),
-    })}`),
+  exercices: (params: Record<string, string> = {}) =>
+    request<Exercise[]>(`/api/exercices${qs(params)}`),
 
   moves: (params: Record<string, string> = {}) =>
     request<MoveOut[]>(`/api/moves${qs(params)}`),

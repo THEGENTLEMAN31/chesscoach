@@ -179,16 +179,25 @@ async def repertoire(db: aiosqlite.Connection, username: str) -> dict:
 
 async def exercices(db: aiosqlite.Connection, username: str, limit: int = 6,
                     concept: str | None = None,
-                    time_class: str | None = None) -> list[dict]:
+                    time_class: str | None = None,
+                    classification: str | None = None) -> list[dict]:
     """Les pires bévues récentes, transformées en exercices (fen + solution), avec rotation.
 
     `concept` : filtre sur le concept détecté (clé concepts, ex. "hanging_piece").
     `time_class` : filtre sur le format de la partie d'origine (rapid / blitz / ...).
+    `classification` : liste de gravités séparées par des virgules
+        (ex. "blunder,mistake"). Vide par défaut → seules les bévues (blunder).
 
     Rotation : priorité de base = perte de probabilité (les pires d'abord) ; un échec
     récent fait remonter la position (à retenter) ; une réussite récente (ou répétée)
     la fait descendre dans la liste — on n'offre pas toujours les mêmes exercices.
     """
+    if classification:
+        classes = [c.strip() for c in classification.split(",") if c.strip()]
+        if not classes:
+            classes = ["blunder"]
+    else:
+        classes = ["blunder"]
     q = """SELECT g.id AS game_id, p.ply, p.san, p.fen_before, p.best_move_uci,
                   p.best_move_san, p.winprob_loss, p.cp_loss, p.phase, p.move_number,
                   p.concept, p.color, g.white, g.black, g.result, g.player_color,
@@ -207,9 +216,10 @@ async def exercices(db: aiosqlite.Connection, username: str, limit: int = 6,
                FROM studied_positions
                GROUP BY game_id, ply
            ) s ON s.game_id=p.game_id AND s.ply=p.ply
-           WHERE g.username=? AND p.is_player=1 AND p.classification='blunder'
+           WHERE g.username=? AND p.is_player=1
+             AND p.classification IN (""" + ",".join("?" * len(classes)) + """)
              AND p.best_move_uci IS NOT NULL"""
-    params: list = [username]
+    params: list = [username, *classes]
     if concept:
         q += " AND p.concept=?"
         params.append(concept)
@@ -327,10 +337,20 @@ async def etude_stats(db: aiosqlite.Connection, username: str,
            FROM studied_positions""" + where, params)
     row = dict((await cur.fetchone()))
     cur = await db.execute(
-        """SELECT concept, COUNT(*) AS n FROM studied_positions
+        """SELECT concept, COUNT(*) AS n,
+                  COALESCE(SUM(correct),0) AS correct
+           FROM studied_positions
            """ + where + """ AND concept IS NOT NULL
-           GROUP BY concept ORDER BY n DESC LIMIT 3""", params)
-    row["by_concept"] = [dict(r) for r in await cur.fetchall()]
+           GROUP BY concept ORDER BY n DESC LIMIT 6""", params)
+    row["by_concept"] = [
+        {
+            "concept": r["concept"],
+            "n": r["n"],
+            "correct": r["correct"],
+            "correct_rate": round(100.0 * r["correct"] / max(1, r["n"]), 1),
+        }
+        for r in await cur.fetchall()
+    ]
     cur = await db.execute(
         """SELECT COUNT(*) AS n FROM studied_positions
            """ + where + """ AND created_at >= datetime('now','-7 days')""", params)

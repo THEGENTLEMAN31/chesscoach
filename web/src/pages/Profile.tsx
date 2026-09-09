@@ -9,11 +9,19 @@ export default function Profile() {
   const { user } = useSession();
   const [timeClass, setTimeClass] = useState("global");
   const [recomputing, setRecomputing] = useState(false);
+  const [objRapid, setObjRapid] = useState("");
+  const [objBlitz, setObjBlitz] = useState("");
+  const [savingObj, setSavingObj] = useState(false);
 
   const profileQ = useQuery({
     queryKey: ["profile", timeClass],
     queryFn: () => api.profile(timeClass),
     staleTime: 60_000,
+  });
+
+  const objectivesQ = useQuery({
+    queryKey: ["objectives"],
+    queryFn: api.objectives,
   });
 
   const profile = profileQ.data as PlayerProfile | undefined;
@@ -34,6 +42,22 @@ export default function Profile() {
       setRecomputing(false);
     }
   };
+
+  const saveObjectives = async () => {
+    setSavingObj(true);
+    try {
+      const rapid = objRapid === "" ? null : Number(objRapid);
+      const blitz = objBlitz === "" ? null : Number(objBlitz);
+      await api.setObjectives({ rapid, blitz });
+      await Promise.all([profileQ.refetch(), objectivesQ.refetch()]);
+    } catch {
+      /* message via UI */
+    } finally {
+      setSavingObj(false);
+    }
+  };
+
+  const targets = objectivesQ.data?.targets ?? {};
 
   return (
     <div className="flex flex-col gap-4">
@@ -62,6 +86,39 @@ export default function Profile() {
           </button>
         ))}
       </div>
+
+      <Card>
+        <h2 className="text-sm font-semibold tracking-tight">Objectif Elo par format</h2>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            Rapide
+            <input
+              type="number"
+              placeholder={String(targets.rapid ?? 2000)}
+              value={objRapid}
+              onChange={(e) => setObjRapid(e.target.value)}
+              className="rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink placeholder:text-muted/50"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            Blitz
+            <input
+              type="number"
+              placeholder={String(targets.blitz ?? 1800)}
+              value={objBlitz}
+              onChange={(e) => setObjBlitz(e.target.value)}
+              className="rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink placeholder:text-muted/50"
+            />
+          </label>
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          Laisse vide pour garder la cible actuelle ({targets.rapid ?? 2000} /{" "}
+          {targets.blitz ?? 1800}). Le profil est recalculé automatiquement.
+        </p>
+        <Button onClick={() => void saveObjectives()} disabled={savingObj} className="mt-3 px-3 py-1.5 text-xs">
+          {savingObj ? "Enregistrement…" : "Enregistrer mes objectifs"}
+        </Button>
+      </Card>
 
       {profileQ.isLoading ? (
         <div className="flex justify-center py-16">

@@ -1,11 +1,13 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BoltIcon, RefreshIcon } from "../components/icons";
+import { Link } from "react-router-dom";
+import { ChevronRightIcon, BoltIcon, RefreshIcon, ChartIcon } from "../components/icons";
 import { Button, Card, Spinner, Stat } from "../components/ui";
 import { api } from "../lib/api";
 import {
   CLASS_COLOR,
   CLASS_LABEL,
+  formatDate,
   TIME_CLASS_LABEL,
 } from "../lib/constants";
 import { useSession } from "../lib/session";
@@ -49,6 +51,14 @@ export default function Dashboard() {
     refetchInterval: 4000,
   });
   const digestQ = useQuery({ queryKey: ["digest"], queryFn: api.digestLatest });
+  const recentQ = useQuery({
+    queryKey: ["recent-games"],
+    queryFn: () => api.games({ status: "analyzed", limit: "5" }),
+  });
+  const formQ = useQuery({
+    queryKey: ["form-games"],
+    queryFn: () => api.games({ status: "analyzed", limit: "20" }),
+  });
 
   const running = syncQ.data?.running ?? false;
   const lastRun = syncQ.data?.last;
@@ -75,6 +85,44 @@ export default function Dashboard() {
   const narrative = Array.isArray(digest?.narrative)
     ? digest?.narrative.join(" ")
     : digest?.narrative;
+
+  const form = useMemo(() => {
+    const games = (formQ.data?.items ?? []).slice(0, 10);
+    if (games.length === 0) return null;
+    let wins = 0,
+      draws = 0,
+      losses = 0;
+    let streak = 0;
+    const accs: number[] = [];
+    for (const g of games) {
+      const won =
+        (g.player_color === "w" && g.result === "1-0") ||
+        (g.player_color === "b" && g.result === "0-1");
+      const lost =
+        (g.player_color === "w" && g.result === "0-1") ||
+        (g.player_color === "b" && g.result === "1-0");
+      if (won) wins++;
+      else if (lost) losses++;
+      else draws++;
+      if (streak === 0) {
+        if (won) streak = 1;
+        else if (lost) streak = -1;
+      } else if ((streak > 0 && won) || (streak < 0 && lost)) {
+        streak += streak > 0 ? 1 : -1;
+      } else if (!(g.result === "1/2-1/2")) {
+        break;
+      }
+      if (g.accuracy != null) accs.push(g.accuracy);
+    }
+    const avgAcc = accs.length ? Math.round(accs.reduce((a, b) => a + b, 0) / accs.length) : null;
+    // Précision récente = dernière partie analysée, tendance vs moyenne des 3 avant elle.
+    const recentAcc = accs[0] ?? null;
+    const older = accs.slice(1, 4);
+    const olderAcc = older.length ? older.reduce((a, b) => a + b, 0) / older.length : null;
+    const accDelta =
+      recentAcc != null && olderAcc != null ? Math.round(recentAcc - olderAcc) : null;
+    return { games: games.length, wins, draws, losses, streak, avgAcc, recentAcc, accDelta };
+  }, [formQ.data]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -169,6 +217,63 @@ export default function Dashboard() {
           </div>
         </Card>
 
+        <Card className="sm:col-span-2 flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <ChartIcon className="h-4 w-4 text-accent" />
+            <h2 className="text-sm font-medium text-muted">Ma forme</h2>
+          </div>
+          {form ? (
+            <>
+              <div className="flex items-center justify-between">
+                <div className="flex gap-1 text-xs font-semibold tabular-nums">
+                  <span className="px-2 py-1 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                    {form.wins} V
+                  </span>
+                  <span className="px-2 py-1 rounded bg-zinc-500/15 text-zinc-600 dark:text-zinc-400">
+                    {form.draws} N
+                  </span>
+                  <span className="px-2 py-1 rounded bg-red-500/15 text-red-600 dark:text-red-400">
+                    {form.losses} D
+                  </span>
+                </div>
+              </div>
+              {form.streak !== 0 ? (
+                <p className="text-sm">
+                  Série en cours :{" "}
+                  <b className={form.streak > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
+                    {Math.abs(form.streak)} {form.streak > 0 ? "victoire" : "défaite"}
+                    {Math.abs(form.streak) > 1 ? "s" : ""} d'affilée
+                  </b>{" "}
+                  sur les {form.games} dernières parties.
+                </p>
+              ) : (
+                <p className="text-sm text-muted">Série interrompue par un résultat nul.</p>
+              )}
+              {form.recentAcc != null && (
+                <Stat
+                  label="Précision (dernière partie)"
+                  value={`${form.recentAcc}%`}
+                  className="text-sm [&>div.text-2xl]:text-lg"
+                />
+              )}
+              {form.accDelta != null && form.accDelta !== 0 && (
+                <p className="text-xs text-muted">
+                  Tendance précision :{" "}
+                  <b className={form.accDelta > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
+                    {form.accDelta > 0 ? "+" : ""}
+                    {form.accDelta} pts
+                  </b>{" "}
+                  vs la moyenne des 3 précédentes.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-muted">
+              Analyse quelques parties pour voir ton niveau de forme.
+            </p>
+          )}
+        </Card>
+
         {digest ? (
           <Card className="sm:col-span-2">
             <h2 className="text-sm font-medium text-muted">
@@ -179,6 +284,50 @@ export default function Dashboard() {
             </p>
           </Card>
         ) : null}
+
+        <Card className="sm:col-span-4">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-medium text-muted">Mes dernières parties</h2>
+            <Link
+              to="/games"
+              className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+            >
+              Tout voir
+              <ChevronRightIcon className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+          {recentQ.isLoading ? (
+            <div className="flex justify-center py-8">
+              <Spinner className="h-5 w-5 text-muted" />
+            </div>
+          ) : recentQ.data && recentQ.data.items.length > 0 ? (
+            <ul className="mt-3 flex flex-col gap-1.5">
+              {recentQ.data.items.map((g) => (
+                <li key={g.id}>
+                  <Link
+                    to={`/games/${g.id}`}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-line/50 px-3 py-2 transition-colors hover:border-accent/50"
+                  >
+                    <span className="min-w-0 truncate text-sm">
+                      {g.white} <span className="text-muted">vs</span> {g.black}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2 text-xs text-muted tabular-nums">
+                      <span>{TIME_CLASS_LABEL[g.time_class] ?? g.time_class}</span>
+                      <span>{formatDate(g.end_time)}</span>
+                      <span className="text-accent">
+                        {g.accuracy !== null && g.accuracy !== undefined ? `${g.accuracy}%` : "—"}
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm text-muted">
+              Aucune partie analysée. Lance une synchronisation ci-dessus.
+            </p>
+          )}
+        </Card>
       </div>
     </div>
   );

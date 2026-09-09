@@ -9,6 +9,7 @@ import json
 
 import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from ..dependencies import get_db
 from ..users import current_username
@@ -128,6 +129,57 @@ async def profile_history_endpoint(
     from ..agent.profile import profile_history
 
     return await profile_history(db, username, time_class=time_class)
+
+
+# ------------------------------------------------------------- objectifs Elo
+class ObjectivesIn(BaseModel):
+    rapid: int | None = None
+    blitz: int | None = None
+
+
+@router.get("/api/profile/objectives")
+async def objectives_get(
+    db: aiosqlite.Connection = Depends(get_db),
+    username: str = Depends(current_username),
+) -> dict:
+    from ..agent.profile import get_objectives
+
+    return {"username": username, "targets": await get_objectives(db, username)}
+
+
+@router.put("/api/profile/objectives")
+async def objectives_put(
+    req: ObjectivesIn,
+    db: aiosqlite.Connection = Depends(get_db),
+    username: str = Depends(current_username),
+) -> dict:
+    from ..agent.profile import SUPPORTED_OBJECTIVE_CLASSES
+
+    values: dict[str, int | None] = {"rapid": req.rapid, "blitz": req.blitz}
+    # Supprime les champs absents du dictionnaire (Pydantic sert None pour les champs
+    # explicitement envoyés à null : on les efface pour retomber sur les défauts).
+    existing = {"rapid": None, "blitz": None}
+    cur = await db.execute(
+        "SELECT rapid, blitz FROM player_objectives WHERE username=?", (username,)
+    )
+    row = await cur.fetchone()
+    if row:
+        existing = {"rapid": row["rapid"], "blitz": row["blitz"]}
+    merged = {k: (values[k] if values[k] is not None else existing[k]) for k in SUPPORTED_OBJECTIVE_CLASSES}
+    await db.execute(
+        """INSERT INTO player_objectives (username, rapid, blitz, updated_at)
+           VALUES (?,?,?,datetime('now'))
+           ON CONFLICT(username) DO UPDATE SET
+               rapid=excluded.rapid, blitz=excluded.blitz, updated_at=excluded.updated_at""",
+        (username, merged["rapid"], merged["blitz"]),
+    )
+    # Force le recalcul des profils pour refléter la nouvelle cible.
+    from ..agent.profile import get_profile
+
+    await get_profile(db, username, recompute=True, time_class="rapid")
+    await get_profile(db, username, recompute=True, time_class="blitz")
+    await db.commit()
+    return await objectives_get(db, username)
 
 
 # --------------------------------------------------------------- digest (sans LLM)

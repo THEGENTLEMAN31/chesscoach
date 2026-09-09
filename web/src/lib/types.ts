@@ -163,7 +163,7 @@ export interface EtudeStats {
   correct_rate: number;
   first_at: string | null;
   last_at: string | null;
-  by_concept: { concept: string | null; n: number }[];
+  by_concept: { concept: string | null; n: number; correct: number; correct_rate: number }[];
   last_7d: number;
 }
 

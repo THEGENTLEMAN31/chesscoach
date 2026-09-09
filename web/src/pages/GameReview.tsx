@@ -26,6 +26,8 @@ import { ChevronRightIcon } from "../components/icons";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
+const CLASS_ORDER = ["blunder", "mistake", "inaccuracy", "good", "best"];
+
 type Mode = "engine" | "quiz";
 
 interface LiveEval {
@@ -98,6 +100,29 @@ export default function GameReview() {
   }, [game]);
 
   const quizPly = useMemo(() => quizPlies[quizIndex] ?? null, [quizPlies, quizIndex]);
+
+  const taxonomy = useMemo(() => {
+    if (!game) return [] as { cls: string; n: number; loss: number; concepts: { concept: string; n: number }[] }[];
+    const byCls = new Map<string, { n: number; loss: number; concepts: Map<string, number> }>();
+    for (const p of game.plies) {
+      if (!p.is_player || !p.classification || p.classification === "book") continue;
+      const e = byCls.get(p.classification) ?? { n: 0, loss: 0, concepts: new Map<string, number>() };
+      e.n += 1;
+      e.loss += p.winprob_loss ?? 0;
+      if (p.concept) e.concepts.set(p.concept, (e.concepts.get(p.concept) ?? 0) + 1);
+      byCls.set(p.classification, e);
+    }
+    return [...byCls.entries()]
+      .map(([cls, e]) => ({
+        cls,
+        n: e.n,
+        loss: e.loss,
+        concepts: [...e.concepts.entries()]
+          .map(([concept, n]) => ({ concept, n }))
+          .sort((a, b) => b.n - a.n),
+      }))
+      .sort((a, b) => CLASS_ORDER.indexOf(a.cls) - CLASS_ORDER.indexOf(b.cls));
+  }, [game]);
 
   const ply = useMemo(() => {
     if (!game || selected < 0) return null;
@@ -583,6 +608,37 @@ export default function GameReview() {
                   )}
                   <MoveList plies={game.plies} selectedPly={selected} onSelect={setSelected} />
                 </Card>
+                {taxonomy.length > 0 && (
+                  <Card>
+                    <h2 className="text-sm font-semibold tracking-tight">Taxonomie détaillée</h2>
+                    <ul className="mt-2 flex flex-col gap-2">
+                      {taxonomy.map((t) => (
+                        <li key={t.cls} className="flex flex-col gap-1 rounded-lg border border-line/50 bg-surface-2/50 px-2.5 py-2">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-sm font-medium" style={{ color: CLASS_COLOR[t.cls] }}>
+                              {CLASS_LABEL[t.cls] ?? t.cls}
+                            </span>
+                            <span className="text-xs text-muted tabular-nums">
+                              {t.n} coup{t.n > 1 ? "s" : ""}
+                              {t.loss > 0 ? ` · −${t.loss.toFixed(1)} pts de proba` : ""}
+                            </span>
+                          </div>
+                          {t.concepts.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {t.concepts.map((c) => (
+                                <span key={c.concept} className="rounded-md border border-line bg-surface-3/60 px-1.5 py-0.5 text-[10px] text-muted">
+                                  {CONCEPT_LABEL[c.concept] ?? c.concept} ×{c.n}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-muted/70">Aucun concept attribué</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </Card>
+                )}
               </>
             ) : (
               <Card>

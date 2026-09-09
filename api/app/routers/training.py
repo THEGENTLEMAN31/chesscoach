@@ -21,10 +21,11 @@ async def exercices(
     username: str = Depends(current_username),
     concept: str | None = None,
     time_class: str | None = None,
+    classification: str | None = None,
     nombre: int = 6,
 ) -> list[dict]:
     nombre = max(1, min(int(nombre), 30))
-    return await ds.exercices(db, username, nombre, concept, time_class)
+    return await ds.exercices(db, username, nombre, concept, time_class, classification)
 
 
 @router.get("/moves")

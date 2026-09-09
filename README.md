@@ -100,11 +100,51 @@ Variables d'auth (prod) :
 - **Images** : web = caddy:2-alpine ; api/analyzer = FastAPI.
 - **Backup SQLite** : `scripts/backup-db.sh [dir]` (snapshot cohérent depuis le conteneur api,
   rétention 14 j). Cron ajouté : `30 3 * * *` (chaque nuit à 3h30).
+- **Healthcheck** : `GET /api/health` (et `/health`) répond `{"ok": true}` si la base est accessible.
+  Le service `api` a un `healthcheck` Docker (`docker inspect --format '{{.State.Health.Status}}' chesscoach-api`).
+- **E2E** : `scripts/e2e/healthcheck.sh`, `scripts/e2e/e2e.sh` (auth + endpoints scopés + objectifs), 
+  `scripts/e2e/import-url.sh <url>` (validation PubAPI/PNG d'un vrai import).
 - **Resync locale** : la file `sync_queue` se vide automatiquement au montage et au retour réseau
   (`web/src/lib/local/sync.ts`), puis via le bouton « Sync ».
 
-### Redéploiement
+### Runbook opérations
 
+**État / diagnostic**
+```bash
+docker compose ps                      # 3 conteneurs up ?
+docker inspect --format '{{.State.Health.Status}}' chesscoach-api
+curl -s https://chesscoach.btj.mooo.com/api/health
+scripts/e2e/healthcheck.sh             # health API + Docker + web via Caddy
+curl -s -I https://chesscoach.btj.mooo.com/ | head -n1   # 200 attendu
+```
+
+**Surveillance (uptime)**
+- Le healthcheck Docker (`/api/health`) redémarre automatiquement un conteneur `restart: unless-stopped` défaillant.
+- Atteindre un uptime externe : un probe HTTP externe sur `/api/health` et `/` (ex. UptimeRobot / Better Stack /
+  Uptime Kuma) — une alerte si non-200 sur plus d'une minute. Le endpoint `/api/health` est volontairement
+  sans auth pour pouvoir être sondé de l'extérieur.
+- `docker compose logs --tail=200 api` puis `analyzer` pour diagnostiquer un pipeline bloqué.
+
+**Revenir en arrière / rollback**
+```bash
+cd /home/gentleman31/chesscoach
+git stash / git checkout <commit>       # revenir au code précédent
+docker compose up -d --build
+scripts/backup-db.sh                    # toujours un snapshot avant manip SQL/DB
+```
+
+**Base de données**
+- La base est `data/chesscoach.db` (volumineuse, non versionnée). Backups : `scripts/backup-db.sh` (rétention 14 j).
+- Restauration : arrêter `api`, remplacer `data/chesscoach.db` par un snapshot, relancer `docker compose up -d api`.
+- Migrations : automatiques au démarrage (`SCHEMA_VERSION`), versionnées et idempotentes.
+
+**Sécurité / secrets**
+- `JWT_SECRET` doit être long et aléatoire en prod (`openssl rand -hex 32`) et changé si un autre opérateur
+  y a accès. `COOKIE_SECURE=true` derrière TLS. `SEED_ADMIN_PASSWORD` fourni par l'env de l'exploitant.
+- Si multi-opérateurs : déplacer `SEED_ADMIN_PASSWORD` et `JWT_SECRET` dans un vault (ex. `sops`/`age` ou le
+  secret manager du VPS) plutôt que le `.env` brut.
+
+**Redéploiement**
 ```bash
 cd /home/gentleman31/chesscoach
 git pull origin v2
@@ -112,6 +152,7 @@ docker compose up -d --build        # rebuild api (seed admin) + web
 caddy reload --config /etc/caddy/Caddyfile   # si Caddyfile changé
 scripts/backup-db.sh                # snapshot avant toute manip SQL
 ```
+
 
 ---
 
@@ -129,19 +170,22 @@ scripts/backup-db.sh                # snapshot avant toute manip SQL
 
 | Méthode | Route | Description |
 | --- | --- | --- |
+| `GET` | `/api/health`, `/health` | Santé (base OK) — utilisé par le healthcheck Docker |
 | `POST` | `/api/sync` | Lance la sync + analyse (tâche de fond) |
 | `GET` | `/api/sync/status` | État de la sync et du worker |
 | `GET` | `/api/games` | Parties paginées (`total` + `items`), filtres time_class/status/eco |
 | `GET` | `/api/games/{id}` | Détail d'une partie + plis analysés |
 | `GET` | `/api/stats` | Stats globales par format |
-| `GET` | `/api/profile/{username}` | Profil pédagogique (global ou `?time_class=`) |
-| `GET` | `/api/profile/{username}/all` | Profil global + rapide + blitz, cohérents entre eux |
-| `POST` | `/api/profile/{username}/recompute` | Recalcule et archive un snapshot |
-| `GET` | `/api/profile/{username}/history` | Courbe Elo (snapshots) |
-| `GET` | `/api/exercices` | Exercices (rotation intégrée), filtre `?concept=` |
+| `GET` | `/api/profile` | Profil pédagogique de l'utilisateur (scopé par session), `?time_class=` |
+| `GET` | `/api/profile/all` | Profil global + rapide + blitz, cohérents entre eux |
+| `POST` | `/api/profile/recompute` | Recalcule et archive un snapshot |
+| `GET` | `/api/profile/history` | Courbe Elo (snapshots) |
+| `GET` | `/api/profile/objectives` | Objectifs Elo par format (modifiables) |
+| `PUT` | `/api/profile/objectives` | Définit ses propres objectifs Elo (rapid/blitz) — recalcul auto |
+| `GET` | `/api/exercices` | Exercices (rotation intégrée), filtres `?concept=&time_class=&classification=` |
 | `GET` | `/api/moves` | Coups fautifs récents, filtres avancés |
 | `GET/POST` | `/api/etudes` | Statistiques / enregistrement d'une tentative d'exercice |
-| `POST` | `/api/chat` | Message à l'agent coach (si LLM activé) |
+| `POST` | `/api/sync/accept` | Accepte une analyse client (local-first P1) |
 | `GET` | `/api/digest/latest` | Dernier digest hebdomadaire |
 
 ---

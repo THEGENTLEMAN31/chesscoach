@@ -65,6 +65,12 @@ async def health() -> dict:
     return {"ok": row is not None}
 
 
+@app.get("/api/health")
+async def api_health() -> dict:
+    row = await (await app.state.db.execute("SELECT 1")).fetchone()
+    return {"ok": row is not None, "service": "api"}
+
+
 if __name__ == "__main__":
     import uvicorn
 

@@ -61,12 +61,14 @@ Navigateur (PWA React)          VPS
 - [ ] (v2 only) service puzzles lichess — PAS avant la v1
 
 ### Phase 3 — Refonte pages
-- [~] **Entraînement** : puzzles de mes parties + filtres concept + suivi par concept + indicateur de réussite (porté). Reste : filtres cadence/gravité, rotation espacée
-- [~] Dashboard : KPIs essentiels + sync + digest opérationnels ; reste : CTA « Analyser ma dernière partie », 5 dernières parties
-- [~] Parties : liste + filtres format/statut + badges opérationnels ; reste : groupement par jour, cartes enrichies
-- [~] Revue : échiquier interactif + modes Moteur/Teste-toi + EvalCurve Bklit + coups/classifications ; reste : panneau variantes MultiPV (P1), taxonomie détaillée
-- [~] Progression : courbe Elo Bklit + tendances 30j + snapshots ; reste : sélecteur période
-- [~] Profil : contenu conservé + objectifs depuis `profile.objective.targets`
+- [x] **Entraînement** : puzzles de mes parties + filtres concept + cadence + gravité + suivi par concept +
+      rotation espacée (dernier essai raté remonte / réussi descend / maîtrisé en bas) + indicateur de réussite.
+- [x] **Dashboard** : KPIs essentiels + sync + digest opérationnels + CTA « Mes dernières parties » (5 dernières).
+- [x] **Parties** : liste + filtres format/statut + badges résultat + groupement par jour + cartes enrichies (elo).
+- [~] **Revue** : échiquier interactif + modes Moteur/Teste-toi + EvalCurve Bklit + coups/classifications +
+      explorateur tous coups (MultiPV) ; reste : taxonomie détaillée affinée.
+- [x] **Progression** : courbe Elo Bklit + tendances 30j + snapshots + sélecteur période (30 j/90 j/1 an/tout).
+- [x] **Profil** : contenu conservé + objectifs depuis `profile.objective.targets` + **objectif Elo modifiable** (PUT).
 - [ ] Réglages : toggles clic/coups légaux/éval rajoutés ✅ ; rien en attente
 
 ### Phase 4 — PWA & déploiement
@@ -123,16 +125,29 @@ Navigateur (PWA React)          VPS
       exploration libre avec l'évaluation moteur de chacun (« et si je joue X ? »). ✅ implémenté
 - [x] **Entraînements multi-coups** (feedback 09/09) : ne pas limiter les exercices à un seul coup —
       générer des variantes sur plusieurs coups (séquences / arbres de décision). ✅ implémenté
-- [ ] **3. Qualité/repro** : E2E intégré au repo (`scripts/e2e/`) hors `/tmp`, healthcheck
-      (`/api/health` + check Caddy), test d'un vrai import URL chess.com en prod.
-- [ ] **4. Produit** : rotation espacée de l'entraînement, filtres cadence/gravité,
-      groupe par jour / cartes enrichies, CTA « Analyser ma dernière partie », sélecteur période.
-- [ ] **5. Ops** : runbook opérations détaillé dans README, surveillance alertes (uptime),
-      migration du mot de passe seed en vault si multi-opérateurs.
-- [ ] **Objectif personnel modifiable** (feedback 09/09) : endpoint serveur pour définir
-      son propre objectif Elo (aujourd'hui cible serveur ELO_TARGETS en lecture seule).
-- [ ] **Pages encore minces** : Dashboard/Parties/entraînement à enrichir davantage au fil des usages
-      (indicateurs de forme, groupement par jour, panneau MultiPV en review).
+- [x] **3. Qualité/repro** : E2E intégré au repo (`scripts/e2e/healthcheck.sh`, `e2e.sh`, `import-url.sh`)
+      hors /tmp ; healthcheck (`/api/health` + `/health` + `healthcheck` Docker) + test d'un vrai import
+      URL chess.com en prod via PubAPI (import-url.sh). ✅ implémenté
+- [x] **4. Produit** : filtres cadence/gravité entraînement (`?time_class=`/`?classification=`), groupe par
+      jour / cartes enrichies (Parties), CTA « Mes dernières parties » (Dashboard), sélecteur période
+      (Progression 30 j/90 j/1 an/tout), siège MultiPV en review (déjà via explorateur). ✅ implémenté
+      — Suivi par concept ✅ : `data_service.etude_stats` renvoie désormais `correct` + `correct_rate` par
+      concept, panneau « Suivi par concept » dans Training (barre de maîtrise ≥80%). Rotation espacée déjà en
+      place dans `data_service.exercices` (raté remonte / réussi descend / maîtrisé en bas).
+      — Taxonomie détaillée (Revue) ✅ : carte « Taxonomie détaillée » dans GameReview (par classification :
+      nb coups, perte de proba cumulée, concepts attachés ×nb).
+      — Indicateurs de forme ✅ : carte « Ma forme » Dashboard (V/N/D, série en cours, précision dernière
+      partie + tendance) + barre « Forme (10 dernières) » dans Parties.
+- [x] **5. Ops** : runbook opérations détaillé dans README (diagnostic, uptime, healthcheck, restore,
+      secrets/vault) + surveillance alertes via probe externe sur `/api/health`. ✅ implémenté
+      — Reste : migration du mot de passe seed en vault (à faire si multi-opérateurs).
+- [x] **Objectif personnel modifiable** (feedback 09/09) : endpoint serveur
+      `GET/PUT /api/profile/objectives` + table `player_objectives` (migration v7) + UI édition dans Profil.
+      Objectifs par format surchargent `ELO_TARGETS`, recalcul auto. ✅ implémenté & testé
+      (rapid 2100 → gap recalculé, reset OK).
+- [~] **Pages encore minces** : Dashboard enrichi (dernières parties + carte « Ma forme ») ✅ ; Parties
+      groupées par jour + barre forme ✅ ; entraînement : filtres cadence/gravité + suivi par concept ✅ ;
+      reste : panneau MultiPV natif en review (l'explorateur libre couvre déjà « et si je joue X ? »).
 
 ## Plan de refactor backend (P0) — constat d'exploration
 > Conclu le 07/09 pendant la phase 0. Source de vérité : code lu (db.py, main.py, config.py, schemas.py,

@@ -15,7 +15,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -194,6 +194,15 @@ MIGRATIONS: dict[int, str] = {
     ALTER TABLE digests ADD COLUMN username TEXT;
     UPDATE digests SET username='thegentleman31' WHERE username IS NULL;
     CREATE INDEX IF NOT EXISTS idx_digests_user ON digests(username, period);
+    """,
+    7: """
+    -- Objectifs Elo par format, modifiables par l'utilisateur (écrasent les cibles globales).
+    CREATE TABLE IF NOT EXISTS player_objectives (
+        username   TEXT PRIMARY KEY,
+        rapid      INTEGER,
+        blitz      INTEGER,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     """,
 }
 

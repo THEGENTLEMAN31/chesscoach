@@ -17,10 +17,18 @@ const TABS = [
   { key: "blitz", label: "Blitz" },
 ];
 
+const PERIODS: { value: number; label: string }[] = [
+  { value: 0, label: "Tout" },
+  { value: 30, label: "30 j" },
+  { value: 90, label: "90 j" },
+  { value: 365, label: "1 an" },
+];
+
 export default function Progression() {
   const [profiles, setProfiles] = useState<Record<string, PlayerProfile> | null>(null);
   const [history, setHistory] = useState<Record<string, ProfileHistory>>({});
   const [tab, setTab] = useState("global");
+  const [period, setPeriod] = useState(0);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [dateMin, setDateMin] = useState("");
@@ -52,21 +60,36 @@ export default function Progression() {
   const profile = profiles?.[tab] ?? profiles?.global ?? null;
   const hist = history[tab] ?? null;
 
+  const cutoffMs = period > 0 ? Date.now() - period * 24 * 3600 * 1000 : 0;
+  const withinPeriod = (d: string) => (cutoffMs === 0 ? true : new Date(d).getTime() >= cutoffMs);
+
   const eloData = useMemo(() => {
     if (hist && hist.dates.length > 1) {
-      return hist.dates
-        .filter((_, i) => hist.elo[i] !== null && hist.elo[i] !== undefined)
-        .map((d, i) => ({ date: d, elo: hist.elo[i], games: hist.games[i] }));
+      const pts = hist.dates
+        .map((d, i) => ({ date: d, elo: hist.elo[i], games: hist.games[i] }))
+        .filter((p) => p.elo !== null && p.elo !== undefined && withinPeriod(p.date));
+      return pts;
     }
-    return (profile?.progress.elo_curve || []).map((p) => ({ date: p.date, elo: p.elo }));
-  }, [hist, profile]);
+    return (profile?.progress.elo_curve || [])
+      .filter((p) => withinPeriod(p.date))
+      .map((p) => ({ date: p.date, elo: p.elo, games: undefined }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hist, profile, period]);
 
   // Courbes affichées : rapide + blitz superposées sur « Toutes cadences ».
   const eloSeries = useMemo(() => {
     const mk = (key: string, label: string, color: string) => {
       const h = history[key];
       if (h && h.dates && h.dates.length > 1) {
-        return { label, color, dates: h.dates, elo: h.elo as (number | null)[] };
+        const dates: string[] = [];
+        const elo: (number | null)[] = [];
+        for (let i = 0; i < h.dates.length; i++) {
+          if (withinPeriod(h.dates[i])) {
+            dates.push(h.dates[i]);
+            elo.push(h.elo[i] ?? null);
+          }
+        }
+        if (dates.length > 1) return { label, color, dates, elo };
       }
       return null;
     };
@@ -85,7 +108,7 @@ export default function Progression() {
     return one ? [one] : eloData.length > 1
       ? [{ label: tab, color: "#6fa8dc", dates: eloData.map((p) => p.date), elo: eloData.map((p) => Number(p.elo)) }]
       : [];
-  }, [tab, history, eloData]);
+  }, [tab, history, eloData, period]);
 
   if (err) {
     return (
@@ -139,7 +162,22 @@ export default function Progression() {
       </div>
 
       <Card>
-        <h2 className="text-sm font-semibold tracking-tight">Courbe Elo</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold tracking-tight">Courbe Elo</h2>
+          <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-1">
+            {PERIODS.map((p) => (
+              <button
+                key={p.value}
+                onClick={() => setPeriod(p.value)}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  period === p.value ? "bg-surface-3 text-ink" : "text-muted hover:text-ink"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
         {/* filtres période + plage elo */}
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <label className="flex flex-col gap-0.5 text-[10px] text-muted">
@@ -160,20 +198,26 @@ export default function Progression() {
           </label>
         </div>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
-            Départ : <b className="text-ink">{eloData[0].elo}</b>
-            <span className="text-muted"> ({String(eloData[0].date).slice(0, 10)})</span>
-          </span>
-          <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
-            Actuel : <b className="text-ink">{eloData[eloData.length - 1].elo}</b>
-            <span className="text-muted"> ({String(eloData[eloData.length - 1].date).slice(0, 10)})</span>
-          </span>
-          <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
-            Max : <b className="text-ink">{Math.max(...eloData.map((p) => Number(p.elo)))}</b>
-          </span>
-          <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
-            Min : <b className="text-ink">{Math.min(...eloData.map((p) => Number(p.elo)))}</b>
-          </span>
+          {eloData.length > 0 ? (
+            <>
+              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
+                Départ : <b className="text-ink">{eloData[0].elo}</b>
+                <span className="text-muted"> ({String(eloData[0].date).slice(0, 10)})</span>
+              </span>
+              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
+                Actuel : <b className="text-ink">{eloData[eloData.length - 1].elo}</b>
+                <span className="text-muted"> ({String(eloData[eloData.length - 1].date).slice(0, 10)})</span>
+              </span>
+              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
+                Max : <b className="text-ink">{Math.max(...eloData.map((p) => Number(p.elo)))}</b>
+              </span>
+              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
+                Min : <b className="text-ink">{Math.min(...eloData.map((p) => Number(p.elo)))}</b>
+              </span>
+            </>
+          ) : (
+            <span className="text-sm text-muted">Aucune donnée sur cette période.</span>
+          )}
         </div>
         <div className="mt-2">
           <EloChart
