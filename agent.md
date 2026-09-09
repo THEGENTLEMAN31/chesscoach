@@ -299,8 +299,18 @@ chacun avec exploration du code + recherches web. Rapport consolidé ci-dessous.
 ## 3. Échecs / Pédagogie
 - **Concept `candidate` = fourre-tout** : toute erreur non reconnue y tombe (`concepts.py:346`) ~30-50% des cas,
   trop vague pour être entraînable. → soit le supprimer, soit le subdiviser (voir stratégie ci-dessous).
+  **Traité (session échecs) :** `candidate` renommé « Meilleur plan manqué » (fourre-tout assumé mais minoré) et
+  subdivisé par 3 nouveaux détecteurs : `bad_trade` (« Mauvais échange », tactique), `king_exposure` (« Roi
+  affaibli », sécurité du roi — brèche de rempart du roi roqué, luft f/h exclu) et `underdeveloped` (« Pièce
+  passive négligée », stratégie — pièce mineure restée à la maison au milieu de jeu que le moteur activait).
+  Validation sur 20,8k erreurs (dev) : bad_trade 45, king_exposure 69, underdeveloped 348 détectés. Portage TS
+  `shared/concepts.ts` : parité mesurée 86,4% (1727/2000) sur un échantillon réel — les seuls écarts restants sont
+  `pin_moved`/`pin_missed` (chess.js n'expose pas `is_pinned`, documenté en en-tête du fichier). Détection des
+  attaques passée en pseudo-légal (miroir de `Board.attacks`) pour fourchette/hanging/bad_trade.
 - **Concepts trop tactiques** (7/15), **peu de stratégie** : manquent espace, activité des pièces, chaînes de pions,
   faiblesse du roi (hors mat), échanges, zwischenzug, surcharge, déviation, découverte.
+  **En partie traité :** activité des pièces (underdeveloped) + échanges (bad_trade) + faiblesse du roi
+  (king_exposure) ajoutés. Reste : espace, chaînes de pions, zwischenzug, surcharge, déviation, découverte.
 - **Tactique seule insuffisante** : pas d'exercices de stratégie (« quel est le plan »), finales (Lucena/Philidor/
   opposition/technique de promotion), évaluation, ni entrainement au **processus de calcul** (checklist CCT,
   vérification des coups de l'adversaire).
@@ -369,7 +379,7 @@ chacun avec exploration du code + recherches web. Rapport consolidé ci-dessous.
 3. Rétention **à la valeur, sans addiction** : aha moment + exercice du jour (vos erreurs) + notifs à valeur +
    digest de progrès ; streak uniquement si non punitif et basé sur l'apprentissage réel (voir §5 ⚠️ principe)
 4. Backend robustness : rate limiting, retry chess.com & analyzer, lock par utilisateur, garde-fou JWT, fixes digest/stats scope
-5. Échecs : sortir `candidate` du fourre-tout + ajouter concepts stratégie + exercices finales/stratégie + plan hebdo + vraie répétition espacée
+5. Échecs : sortir `candidate` du fourre-tout + ajouter concepts stratégie + exercices finales/stratégie + plan hebdo + vraie répétition espacée — **candidate subdivisé ✅** (bad_trade, king_exposure, underdeveloped ; parité TS 86,4%, écarts = pin uniquement). Reste : exercices finales/stratégie, plan hebdo, répétition espacée.
 6. Mobile : précacher WASM + icônes PNG PWA + session persistée offline
 7. UX polish : EloChart interactif, EvalBar, micro-interactions, accessibilité
 

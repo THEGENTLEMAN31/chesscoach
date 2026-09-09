@@ -38,14 +38,17 @@ CONCEPTS: dict[str, tuple[str, str]] = {
     "pin_moved": ("tactique", "Pièce clouée déplacée"),
     "pin_missed": ("tactique", "Clouage manqué"),
     "missed_mate": ("tactique", "Mat manqué"),
-    "candidate": ("tactique", "Coup candidat manqué"),
+    "bad_trade": ("tactique", "Mauvais échange"),
+    "candidate": ("tactique", "Meilleur plan manqué"),
     "allowed_mate": ("sécurité du roi", "Mat subi"),
     "back_rank": ("sécurité du roi", "Mat de la première rangée"),
     "roque_missed": ("sécurité du roi", "Roque manqué"),
+    "king_exposure": ("sécurité du roi", "Roi affaibli"),
     "pawn_structure": ("structure", "Faiblesse de pions"),
     "promotion": ("finale", "Promotion manquée"),
     "passed_pawn": ("finale", "Pion passé négligé"),
     "development": ("ouverture", "Développement insuffisant"),
+    "underdeveloped": ("stratégie", "Pièce passive négligée"),
     "threat_ignored": ("prophylaxie", "Menace adverse négligée"),
 }
 
@@ -140,6 +143,55 @@ def _king_on_back_rank(board: chess.Board, color: chess.Color) -> bool:
     if color == chess.WHITE:
         return rank == 0
     return rank == 7
+
+
+def _castled_shield_breach(board: chess.Board, color: chess.Color, uci: str) -> bool:
+    """Vrai si le coup du joueur ouvre le rempart de pions de SON roi roqué.
+
+    Roi roqué (g1/c1 / g8/c8) : le pion directement devant (g2, c2…) protège le
+    roi ; le déplacer crée un trou certain dans le rempart. Les pas latéraux
+    isolés (f2-f3, h2-h3, « luft ») ne sont volontairement PAS flagués
+    (anti-faux-positifs)."""
+    king = board.king(color)
+    if king is None:
+        return False
+    kf = chess.square_file(king)
+    kr = chess.square_rank(king)
+    home = 0 if color == chess.WHITE else 7
+    if kr != home or kf not in (2, 6):
+        return False
+    try:
+        mv = board.parse_uci(uci)
+    except (ValueError, IndexError):
+        return False
+    if board.piece_type_at(mv.from_square) != chess.PAWN:
+        return False
+    if chess.square_file(mv.from_square) != kf:
+        return False  # les autres colonnes : simple filet latéral
+    shield = 1 if color == chess.WHITE else 6  # g2 blanc / g7 noir (0-based)
+    pr = chess.square_rank(mv.from_square)
+    return pr in (shield, shield + 1)
+
+
+def _underdeveloped_piece(
+    board: chess.Board, color: chess.Color, best_uci: str | None, uci: str | None
+) -> bool:
+    """Vrai si le meilleur coup du moteur active une pièce mineure encore à la
+    maison (cavalier/fou sur la rangée initiale) — pièce passive non sortie."""
+    if not best_uci:
+        return False
+    try:
+        mv = board.parse_uci(best_uci)
+    except (ValueError, IndexError):
+        return False
+    if board.color_at(mv.from_square) != color:
+        return False
+    piece = board.piece_type_at(mv.from_square)
+    if piece not in (chess.KNIGHT, chess.BISHOP):
+        return False
+    rank = chess.square_rank(mv.from_square)
+    home = 0 if color == chess.WHITE else 7
+    return rank == home and uci != best_uci
 
 
 def _back_rank_threat(board: chess.Board, color: chess.Color) -> bool:
@@ -288,6 +340,27 @@ def analyze_error(
         concepts.append("back_rank")
     if best_san in ("O-O", "O-O-O") and uci != best_uci:
         concepts.append("roque_missed")
+    if uci and _castled_shield_breach(board, side, uci):
+        concepts.append("king_exposure")
+
+    # ---------------------------------------------- mauvais échange certain
+    if uci and best_uci and uci != best_uci:
+        try:
+            cap = board.copy()
+            mv = cap.parse_uci(uci)
+            moving = cap.piece_type_at(mv.from_square)
+            captured = cap.piece_type_at(mv.to_square)
+            cap.push(mv)
+            if (
+                moving is not None
+                and captured is not None
+                and PIECE_VALUE[moving] > PIECE_VALUE[captured]
+                and cap.attackers(not side, mv.to_square)
+                and not cap.attackers(side, mv.to_square)
+            ):
+                concepts.append("bad_trade")
+        except (ValueError, IndexError):
+            pass
 
     # ------------------------------------------------------- structure
     if uci:
@@ -327,6 +400,10 @@ def analyze_error(
                       or (side == chess.BLACK and chess.square_rank(sq) >= 6)))
         if nb >= 2 and not (best_san in ("O-O", "O-O-O") and uci == best_uci):
             concepts.append("development")
+    elif phase == "middlegame":
+        # pièce mineure encore sur sa case de départ au milieu de partie
+        if _underdeveloped_piece(board, side, best_uci, uci):
+            concepts.append("underdeveloped")
 
     # -------------------------------------------------------- prophylaxie
     if hanging_before and not concepts and uci != best_uci:

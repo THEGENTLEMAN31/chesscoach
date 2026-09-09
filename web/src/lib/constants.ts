@@ -26,20 +26,23 @@ export const CLASS_COLOR: Record<string, string> = {
 };
 
 export const CONCEPT_LABEL: Record<string, string> = {
-  candidate: "Coup candidat manqué",
+  candidate: "Meilleur plan manqué",
   hanging_piece: "Pièce en prise",
   missed_capture: "Capture manquée",
   fork: "Fourchette",
   pin_moved: "Pièce clouée déplacée",
   pin_missed: "Clouage manqué",
   missed_mate: "Mat manqué",
+  bad_trade: "Mauvais échange",
   allowed_mate: "Mat subi",
   back_rank: "Mat de la première rangée",
   roque_missed: "Roque manqué",
+  king_exposure: "Roi affaibli",
   pawn_structure: "Faiblesse de pions",
   promotion: "Promotion négligée",
   passed_pawn: "Pion passé négligé",
   development: "Développement insuffisant",
+  underdeveloped: "Pièce passive négligée",
   threat_ignored: "Menace ignorée",
 };
 
