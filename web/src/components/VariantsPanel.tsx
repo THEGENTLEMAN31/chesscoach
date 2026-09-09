@@ -56,14 +56,20 @@ export default function VariantsPanel({ fen, playerColor, engine, engineReady, o
       const base = await engine.evalFen(fen, { movetime: 250, depth: 10 });
       setBaseCp(base?.cp ?? null);
       const out: Variant[] = [];
-      for (const m of legal.slice(0, 12)) {
-        const r = await engine.evalFen(m.fen, { movetime: 250, depth: 10 });
+      const MAX_EVAL = 24;
+      for (let i = 0; i < legal.length; i++) {
+        const m = legal[i];
+        let cp: number | null = null;
+        if (i < MAX_EVAL) {
+          const r = await engine.evalFen(m.fen, { movetime: 200, depth: 9 });
+          cp = r?.cp ?? null;
+        }
         out.push({
           uci: m.uci,
           san: m.san,
           fen: m.fen,
-          cp: r?.cp ?? null,
-          winprob: r?.cp != null ? playerWinProb({ cp: r.cp, mate: null }, playerColor) : null,
+          cp,
+          winprob: cp != null ? playerWinProb({ cp, mate: null }, playerColor) : null,
         });
       }
       setVariants(out);
@@ -103,7 +109,7 @@ export default function VariantsPanel({ fen, playerColor, engine, engineReady, o
       ) : sorted.length === 0 ? (
         <p className="text-xs text-muted">Aucun coup légal.</p>
       ) : (
-        <ul className="flex flex-col gap-1">
+        <ul className="max-h-72 flex flex-col gap-0.5 overflow-y-auto">
           {sorted.map((v) => {
             const delta = v.cp != null && baseCp != null ? v.cp - baseCp : null;
             return (

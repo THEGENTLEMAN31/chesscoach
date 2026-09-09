@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChartTooltip, Grid, Line, LineChart, XAxis } from "../components/charts";
+import EloChart from "../components/EloChart";
 import { Button, Card, Spinner } from "../components/ui";
 import { api } from "../lib/api";
 import { TIME_CLASS_LABEL } from "../lib/constants";
@@ -23,6 +23,10 @@ export default function Progression() {
   const [tab, setTab] = useState("global");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dateMin, setDateMin] = useState("");
+  const [dateMax, setDateMax] = useState("");
+  const [eloMin, setEloMin] = useState<number | null>(null);
+  const [eloMax, setEloMax] = useState<number | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -56,6 +60,32 @@ export default function Progression() {
     }
     return (profile?.progress.elo_curve || []).map((p) => ({ date: p.date, elo: p.elo }));
   }, [hist, profile]);
+
+  // Courbes affichées : rapide + blitz superposées sur « Toutes cadences ».
+  const eloSeries = useMemo(() => {
+    const mk = (key: string, label: string, color: string) => {
+      const h = history[key];
+      if (h && h.dates && h.dates.length > 1) {
+        return { label, color, dates: h.dates, elo: h.elo as (number | null)[] };
+      }
+      return null;
+    };
+    if (tab === "global") {
+      const out: { label: string; color: string; dates: string[]; elo: (number | null)[] }[] = [];
+      const r = mk("rapid", "Rapide", "#6fa8dc");
+      if (r) out.push(r);
+      const b = mk("blitz", "Blitz", "#d9a441");
+      if (b) out.push(b);
+      if (out.length === 0 && eloData.length > 1) {
+        out.push({ label: "Global", color: "#6fa8dc", dates: eloData.map((p) => p.date), elo: eloData.map((p) => Number(p.elo)) });
+      }
+      return out;
+    }
+    const one = mk(tab, tab === "rapid" ? "Rapide" : "Blitz", tab === "rapid" ? "#6fa8dc" : "#d9a441");
+    return one ? [one] : eloData.length > 1
+      ? [{ label: tab, color: "#6fa8dc", dates: eloData.map((p) => p.date), elo: eloData.map((p) => Number(p.elo)) }]
+      : [];
+  }, [tab, history, eloData]);
 
   if (err) {
     return (
@@ -110,56 +140,50 @@ export default function Progression() {
 
       <Card>
         <h2 className="text-sm font-semibold tracking-tight">Courbe Elo</h2>
-        {eloData.length >= 2 ? (
-          <div className="mt-2">
-            <div className="flex flex-wrap gap-1.5">
-              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
-                Départ : <b className="text-ink">{eloData[0].elo}</b>
-                <span className="text-muted"> ({String(eloData[0].date).slice(0, 10)})</span>
-              </span>
-              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
-                Actuel : <b className="text-ink">{eloData[eloData.length - 1].elo}</b>
-                <span className="text-muted"> ({String(eloData[eloData.length - 1].date).slice(0, 10)})</span>
-              </span>
-              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
-                Max : <b className="text-ink">{Math.max(...eloData.map((p) => Number(p.elo)))}</b>
-              </span>
-              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
-                Min : <b className="text-ink">{Math.min(...eloData.map((p) => Number(p.elo)))}</b>
-              </span>
-            </div>
-            <div className="mt-2">
-            <LineChart
-              data={eloData}
-              xDataKey="date"
-              status="ready"
-              style={{ height: 260 }}
-              margin={{ top: 4, right: 8, bottom: 20, left: 8 }}
-            >
-              <Grid numTicksRows={5} strokeDasharray="3 4" />
-              <XAxis numTicks={6} />
-              <Line
-                dataKey="elo"
-                stroke="var(--chart-1)"
-                strokeWidth={2}
-                markers={{ fill: "var(--chart-1)", radius: 3, fadeOnHover: false }}
-              />
-              <ChartTooltip
-                rows={(d) => [
-                  { color: "var(--chart-1)", label: "Elo", value: String(d.elo) },
-                  ...("games" in d && d.games !== undefined
-                    ? [{ color: "var(--muted)", label: "Parties analysées", value: String(d.games) }]
-                    : []),
-                ]}
-              />
-            </LineChart>
-            </div>
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-muted">
-            Pas encore assez de points pour tracer la courbe.
-          </p>
-        )}
+        {/* filtres période + plage elo */}
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <label className="flex flex-col gap-0.5 text-[10px] text-muted">
+            Du
+            <input type="date" value={dateMin} onChange={(e) => setDateMin(e.target.value)} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
+          </label>
+          <label className="flex flex-col gap-0.5 text-[10px] text-muted">
+            Au
+            <input type="date" value={dateMax} onChange={(e) => setDateMax(e.target.value)} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
+          </label>
+          <label className="flex flex-col gap-0.5 text-[10px] text-muted">
+            Elo min
+            <input type="number" value={eloMin ?? ""} onChange={(e) => setEloMin(e.target.value === "" ? null : Number(e.target.value))} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
+          </label>
+          <label className="flex flex-col gap-0.5 text-[10px] text-muted">
+            Elo max
+            <input type="number" value={eloMax ?? ""} onChange={(e) => setEloMax(e.target.value === "" ? null : Number(e.target.value))} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
+          </label>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
+            Départ : <b className="text-ink">{eloData[0].elo}</b>
+            <span className="text-muted"> ({String(eloData[0].date).slice(0, 10)})</span>
+          </span>
+          <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
+            Actuel : <b className="text-ink">{eloData[eloData.length - 1].elo}</b>
+            <span className="text-muted"> ({String(eloData[eloData.length - 1].date).slice(0, 10)})</span>
+          </span>
+          <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
+            Max : <b className="text-ink">{Math.max(...eloData.map((p) => Number(p.elo)))}</b>
+          </span>
+          <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
+            Min : <b className="text-ink">{Math.min(...eloData.map((p) => Number(p.elo)))}</b>
+          </span>
+        </div>
+        <div className="mt-2">
+          <EloChart
+            series={eloSeries}
+            dateMin={dateMin || null}
+            dateMax={dateMax || null}
+            eloMin={eloMin}
+            eloMax={eloMax}
+          />
+        </div>
         <p className="mt-3 text-xs text-muted">
           Tendance : <b className="text-ink">{profile.progress.elo_trend ?? "—"}</b> elo · Précision :{" "}
           <b className="text-ink">{profile.progress.accuracy_trend ?? "—"}</b> pts

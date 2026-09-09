@@ -81,8 +81,6 @@ export default function EvalCurve({ game }: Props) {
           dataKey="wp"
           stroke="var(--chart-1)"
           strokeWidth={2}
-          showMarkers
-          markers={{ fill: "var(--chart-1)", radius: 3, fadeOnHover: false }}
         />
         <ChartTooltip rows={(d) => rowsFor(d as Row)} />
       </LineChart>
