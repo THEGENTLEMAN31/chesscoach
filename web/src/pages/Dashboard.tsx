@@ -224,30 +224,30 @@ export default function Dashboard() {
         ) : (
           <>
             {/* ELO Header */}
-            {eloData && (
-              <Card className="sm:col-span-4">
-                <div className="flex flex-col gap-3">
+{eloData && (
+               <Card className="sm:col-span-4 p-4">
+                 <div className="flex flex-col gap-4">
                   <div className="flex flex-wrap items-center gap-4">
                     {eloData.current != null && (
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-xs text-muted">ELO</span>
-                        <span className="text-2xl font-bold tracking-tight text-ink tabular-nums">
-                          {eloData.current}
-                        </span>
-                      </div>
+<div className="flex items-baseline gap-1.5">
+                   <span className="text-xs text-muted">ÉLO (global)</span>
+                   <span className="text-2xl font-bold tracking-tight text-ink tabular-nums">
+                     {eloData.current}
+                   </span>
+                 </div>
                     )}
                     {eloData.target != null && eloData.current != null && (
-                      <Link to="/profile" className="group flex items-baseline gap-1.5">
-                        <span className="text-xs text-muted">Objectif</span>
-                        <span className="text-lg font-semibold text-accent tabular-nums group-hover:underline">
-                          {eloData.target}
-                        </span>
-                        {profile?.objective?.progression_pct != null && (
-                          <span className="text-xs text-muted">
-                            ({Math.round(profile.objective.progression_pct)}% fait)
-                          </span>
-                        )}
-                      </Link>
+<Link to="/profile" className="group flex items-baseline gap-1.5">
+                         <span className="text-xs text-muted">Objectif rapide</span>
+                         <span className="text-lg font-semibold text-accent tabular-nums group-hover:underline">
+                           {eloData.target}
+                         </span>
+                         {profile?.objective?.progression_pct != null && (
+                           <span className="text-xs text-muted">
+                             ({Math.round(profile.objective.progression_pct)}% fait)
+                           </span>
+                         )}
+                       </Link>
                     )}
                     {eloData.trend != null && (
                       <div className="flex items-center gap-1 text-xs">
@@ -261,16 +261,16 @@ export default function Dashboard() {
                   </div>
                   {eloData.eloCurve.length > 1 && (
                     <div className="mt-1">
-                      <EloChart
-                        series={[{
-                          label: "ELO",
-                          color: "var(--color-accent, #6fa8dc)",
-                          dates: eloData.eloCurve.map((p) => p.date),
-                          elo: eloData.eloCurve.map((p) => p.elo),
-                        }]}
-                        height={160}
-                        milestones={[1200, 1400, 1600, 1800, 2000]}
-                      />
+<EloChart
+                         series={[{
+                           label: "ELO",
+                           color: "var(--color-accent, #6fa8dc)",
+                           dates: eloData.eloCurve.map((p) => p.date),
+                           elo: eloData.eloCurve.map((p) => p.elo),
+                         }]}
+                         height={260}
+                         milestones={[1200, 1400, 1600, 1800, 2000]}
+                       />
                     </div>
                   )}
                 </div>

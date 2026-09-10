@@ -246,37 +246,17 @@ export default function Progression() {
             </div>
           )}
         </div>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {eloData.length > 0 ? (
-            <>
-              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
-                Départ : <b className="text-ink">{eloData[0].elo}</b>
-                <span className="text-muted"> ({String(eloData[0].date).slice(0, 10)})</span>
-              </span>
-              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
-                Actuel : <b className="text-ink">{eloData[eloData.length - 1].elo}</b>
-                <span className="text-muted"> ({String(eloData[eloData.length - 1].date).slice(0, 10)})</span>
-              </span>
-              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
-                Max : <b className="text-ink">{Math.max(...eloData.map((p) => Number(p.elo)))}</b>
-              </span>
-              <span className="rounded-md border border-line bg-surface-2/60 px-2 py-0.5 text-xs tabular-nums text-muted">
-                Min : <b className="text-ink">{Math.min(...eloData.map((p) => Number(p.elo)))}</b>
-              </span>
-            </>
-          ) : (
-            <span className="text-sm text-muted">Aucune donnée sur cette période.</span>
-          )}
-        </div>
-        <div className="mt-2">
-          <EloChart
-            series={eloSeries}
-            dateMin={dateMin || null}
-            dateMax={dateMax || null}
-            eloMin={eloMin}
-            eloMax={eloMax}
-          />
-        </div>
+
+<div className="mt-4">
+              <EloChart
+                  series={eloSeries}
+                  dateMin={dateMin || null}
+                  dateMax={dateMax || null}
+                  eloMin={eloMin}
+                  eloMax={eloMax}
+                  height={400}
+                />
+            </div>
         <p className="mt-3 text-xs text-muted">
           Tendance : <b className="text-ink">{profile.progress.elo_trend ?? "—"}</b> elo · Précision :{" "}
           <b className="text-ink">{profile.progress.accuracy_trend ?? "—"}</b> pts

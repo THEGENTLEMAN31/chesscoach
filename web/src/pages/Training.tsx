@@ -219,16 +219,39 @@ export default function Training() {
   const conceptKeys = (profile?.concepts_missing || []).map((c) => c.key);
   const options = concept ? [concept] : conceptKeys;
   const isCorrect = revealed && proposed === exercise?.best_move_uci;
+
+  // Pastille de couleur sur le carré du coup joué (vert si correct, rouge sinon)
+  const userMoveStyle = useMemo(() => {
+    const style: CustomSquareStyles = {};
+    if (revealed && proposed && exercise) {
+      const from = proposed.slice(0, 2) as Square;
+      const to = proposed.slice(2, 4) as Square;
+      const color = isCorrect
+        ? "rgba(63,181,98,0.2)" // vert translucide
+        : "rgba(217,82,79,0.2)"; // rouge translucide
+      style[from] = { background: color };
+      style[to] = { background: color };
+    }
+    return style;
+  }, [revealed, proposed, exercise, isCorrect]);
+
+  // Flèche montrant le coup de référence : réponse adverse si disponible, sinon meilleur coup
+  const refMoveArrows = useMemo(() => {
+    const arr: Arrow[] = [];
+    if (revealed) {
+      const refMove = opponentReply ?? exercise.best_move_uci;
+      if (refMove) {
+        const from = refMove.slice(0, 2) as Square;
+        const to = refMove.slice(2, 4) as Square;
+        const color = opponentReply ? "#3b82f6" : "#10b981"; // bleu pour réponse adverse, vert pour meilleur coup
+        arr.push([from as Arrow[0], to as Arrow[1], color]);
+    }
+    }
+    return arr;
+  }, [revealed, opponentReply, exercise.best_move_uci]);
   const colorLabel = exercise?.color === "w" ? "les Blancs" : "les Noirs";
 
-  const arrows: Arrow[] = [];
-  if (revealed && exercise?.best_move_uci && !replyFen) {
-    arrows.push([
-      exercise.best_move_uci.slice(0, 2) as Arrow[0],
-      exercise.best_move_uci.slice(2, 4) as Arrow[1],
-      "#2f7cd6",
-    ]);
-  }
+const arrows = refMoveArrows;
 
   const stmLabel = exercise
     ? sideToMove(exercise.fen_before) === "w"
@@ -490,26 +513,27 @@ export default function Training() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
         <Card>
           {exercise ? (
-            <Board
-              fen={boardFen ?? exercise.fen_before}
-              orientation={
-                (exercise.color ?? sideToMove(exercise.fen_before)) === "b"
-                  ? "black"
-                  : "white"
-              }
-              draggable={!revealed}
-              onPieceDrop={onDrop}
-              onSquareClick={onSquareClick}
-              arrows={arrows}
-              selected={selected}
-              pendingPromo={pendingPromo}
-              onPromo={(p) => {
-                if (!pendingPromo) return;
-                const { from, to } = pendingPromo;
-                setPendingPromo(null);
-                playMove(from, to, p);
-              }}
-            />
+<Board
+             fen={boardFen ?? exercise.fen_before}
+             orientation={
+               (exercise.color ?? sideToMove(exercise.fen_before)) === "b"
+                 ? "black"
+                 : "white"
+             }
+             draggable={!revealed}
+             onPieceDrop={onDrop}
+             onSquareClick={onSquareClick}
+             arrows={arrows}
+             selected={selected}
+             pendingPromo={pendingPromo}
+             squareStyles={userMoveStyle}
+             onPromo={(p) => {
+               if (!pendingPromo) return;
+               const { from, to } = pendingPromo;
+               setPendingPromo(null);
+               playMove(from, to, p);
+             }}
+           />
           ) : (
             <div className="flex flex-col gap-2 py-8 text-center">
               <p className="text-sm text-muted">
