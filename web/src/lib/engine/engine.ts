@@ -57,7 +57,7 @@ export function uciScore(info: EngineInfo): number | null {
 
 const ENGINE_WORKER_URL = () => {
   const origin = typeof location !== "undefined" ? location.origin : "";
-  return `${origin}/engine/worker.js#${origin}/engine/stockfish.wasm`;
+  return `${origin}/engine/worker.js#${origin}/engine/stockfish.wasm,worker`;
 };
 
 interface Pending {

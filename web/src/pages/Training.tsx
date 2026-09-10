@@ -94,6 +94,39 @@ export default function Training() {
     }
   }, [proposed, exercise]);
 
+  const isCorrect = revealed && proposed === exercise?.best_move_uci;
+  const bestMoveUci = exercise?.best_move_uci ?? null;
+
+  // Pastille de couleur sur le carré du coup joué (vert si correct, rouge sinon)
+  const userMoveStyle = useMemo(() => {
+    const style: CustomSquareStyles = {};
+    if (revealed && proposed && exercise) {
+      const from = proposed.slice(0, 2) as Square;
+      const to = proposed.slice(2, 4) as Square;
+      const color = isCorrect
+        ? "rgba(63,181,98,0.2)"
+        : "rgba(217,82,79,0.2)";
+      style[from] = { background: color };
+      style[to] = { background: color };
+    }
+    return style;
+  }, [revealed, proposed, exercise, isCorrect]);
+
+  // Flèche montrant le coup de référence : réponse adverse si disponible, sinon meilleur coup
+  const refMoveArrows = useMemo(() => {
+    const arr: Arrow[] = [];
+    if (revealed && exercise) {
+      const refMove = opponentReply ?? bestMoveUci;
+      if (refMove) {
+        const from = refMove.slice(0, 2) as Square;
+        const to = refMove.slice(2, 4) as Square;
+        const color = opponentReply ? "#3b82f6" : "#10b981";
+        arr.push([from as Arrow[0], to as Arrow[1], color]);
+      }
+    }
+    return arr;
+  }, [revealed, opponentReply, bestMoveUci]);
+
   if (err) {
     return (
       <div className="flex flex-col gap-4">
@@ -215,37 +248,6 @@ export default function Training() {
 
   const conceptKeys = (profile?.concepts_missing || []).map((c) => c.key);
   const options = concept ? [concept] : conceptKeys;
-  const isCorrect = revealed && proposed === exercise?.best_move_uci;
-
-  // Pastille de couleur sur le carré du coup joué (vert si correct, rouge sinon)
-  const userMoveStyle = useMemo(() => {
-    const style: CustomSquareStyles = {};
-    if (revealed && proposed && exercise) {
-      const from = proposed.slice(0, 2) as Square;
-      const to = proposed.slice(2, 4) as Square;
-      const color = isCorrect
-        ? "rgba(63,181,98,0.2)" // vert translucide
-        : "rgba(217,82,79,0.2)"; // rouge translucide
-      style[from] = { background: color };
-      style[to] = { background: color };
-    }
-    return style;
-  }, [revealed, proposed, exercise, isCorrect]);
-
-  // Flèche montrant le coup de référence : réponse adverse si disponible, sinon meilleur coup
-  const refMoveArrows = useMemo(() => {
-    const arr: Arrow[] = [];
-    if (revealed) {
-      const refMove = opponentReply ?? exercise.best_move_uci;
-      if (refMove) {
-        const from = refMove.slice(0, 2) as Square;
-        const to = refMove.slice(2, 4) as Square;
-        const color = opponentReply ? "#3b82f6" : "#10b981"; // bleu pour réponse adverse, vert pour meilleur coup
-        arr.push([from as Arrow[0], to as Arrow[1], color]);
-    }
-    }
-    return arr;
-  }, [revealed, opponentReply, exercise.best_move_uci]);
   const colorLabel = exercise?.color === "w" ? "les Blancs" : "les Noirs";
 
 const arrows = refMoveArrows;
