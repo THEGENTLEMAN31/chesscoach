@@ -1,9 +1,10 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package.json ./
+COPY package-lock.json ./
 COPY scripts/ ./scripts/
 COPY public/ ./public/
-RUN npm install --no-audit --no-fund
+RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npm run build
 
