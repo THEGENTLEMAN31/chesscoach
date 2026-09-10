@@ -256,7 +256,7 @@ export default function ImportPage() {
               {busy ? "Analyse en cours…" : engineState.loading ? "Chargement du moteur…" : "Importer et analyser"}
             </Button>
             {engineState.failed && (
-              <p className="mt-2 text-xs text-[#d9534f]">
+              <p className="mt-2 text-xs text-eval-down">
                 Moteur local indisponible — réessaie plus tard.
               </p>
             )}
@@ -290,7 +290,7 @@ export default function ImportPage() {
           </div>
         )}
 
-        {error && <p className="mt-3 text-sm text-[#d9534f]">{error}</p>}
+        {error && <p className="mt-3 text-sm text-eval-down">{error}</p>}
       </Card>
 
       <Card>

@@ -18,6 +18,8 @@ interface Row {
   is_player: boolean;
 }
 
+const Y_TICKS = [0, 25, 50, 75, 100];
+
 export default function EvalCurve({ game }: Props) {
   let prevWp: number | null = null;
   const data: Row[] = game.plies.map((p) => {
@@ -62,25 +64,39 @@ export default function EvalCurve({ game }: Props) {
   };
 
   return (
-    <div>
+    <div className="relative">
+      {/* Y-axis labels */}
+      <div
+        className="absolute top-2 bottom-8 flex flex-col justify-between text-[10px] text-muted pointer-events-none select-none"
+        style={{ left: 0, width: 36 }}
+      >
+        {Y_TICKS.map((v) => (
+          <span key={v} className="tabular-nums text-right pr-1">{v}%</span>
+        ))}
+      </div>
+
       <LineChart
         data={data}
         xDataKey="date"
         status="ready"
-        style={{ height: 210 }}
-        margin={{ top: 8, right: 8, bottom: 26, left: 8 }}
-        tickLabelFormatter={(d) => `c${String((d as Row).ply + 1)}`}
+        style={{ height: 260 }}
+        margin={{ top: 8, right: 8, bottom: 28, left: 44 }}
+        tickLabelFormatter={(d) => `C${String((d as Row).ply + 1)}`}
       >
         <Grid
           numTicksRows={4}
+          rowTickValues={Y_TICKS}
           strokeDasharray="3 4"
           highlightRowValues={[50]}
           highlightRowStroke="var(--muted)"
+          highlightRowStrokeDasharray="6 3"
         />
         <Line
           dataKey="wp"
           stroke="var(--chart-1)"
           strokeWidth={2}
+          showMarkers
+          markers={{ radius: 2.5, strokeWidth: 0, fill: "var(--chart-1)", fadeOnHover: false }}
         />
         <ChartTooltip rows={(d) => rowsFor(d as Row)} />
       </LineChart>

@@ -4,16 +4,15 @@ interface EvalBarProps {
   label?: string;
 }
 
-/** Jauge d'avantage verticale (droite de l'échiquier).
+/** Jauge d'avantage verticale fine (droite de l'échiquier), style Lichess.
  * Montée = avantage joueur, descente = désavantage ; centre = 50/50. */
 export default function EvalBar({ wp, label }: EvalBarProps) {
   const norm = wp === null ? 50 : Math.max(-50, Math.min(50, wp - 50));
   const fillPct = Math.abs(norm);
   const up = norm >= 0;
   return (
-    <div className="flex select-none flex-col items-center gap-1.5">
-      <span className="text-[10px] font-semibold text-muted">+</span>
-      <div className="relative h-28 w-3 overflow-hidden rounded-full bg-surface-3">
+    <div className="flex select-none flex-col items-center gap-1">
+      <div className="relative h-24 w-1.5 overflow-hidden rounded-full bg-surface-3">
         {fillPct > 0 && (
           <div
             className={`absolute w-full transition-all duration-300 ${
@@ -28,9 +27,8 @@ export default function EvalBar({ wp, label }: EvalBarProps) {
         )}
         <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-line" />
       </div>
-      <span className="text-[10px] font-semibold text-muted">−</span>
       {label !== undefined && (
-        <span className="w-14 shrink-0 rounded-md border border-line bg-surface-2 px-1 py-0.5 text-center text-[10px] tabular-nums text-muted">
+        <span className="w-9 shrink-0 rounded border border-line bg-surface-2 px-0.5 py-0.5 text-center text-[10px] tabular-nums text-muted">
           {label}
         </span>
       )}

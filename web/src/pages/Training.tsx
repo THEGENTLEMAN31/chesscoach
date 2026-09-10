@@ -5,11 +5,7 @@ import { Chess, type Square } from "chess.js";
 import { Board } from "../components/Board";
 import { Button, Card } from "../components/ui";
 import { api } from "../lib/api";
-import {
-  CONCEPT_LABEL,
-  CONCEPT_LIST,
-  formatDate,
-} from "../lib/constants";
+import { CONCEPT_LABEL, CONCEPT_LIST, formatDate } from "../lib/constants";
 import {
   legalMoveTargets,
   pieceAt,
@@ -44,7 +40,9 @@ export default function Training() {
   const [selected, setSelected] = useState<Square | null>(null);
   const [pendingPromo, setPendingPromo] = useState<PendingPromo>(null);
   const [opponentReply, setOpponentReply] = useState<string | null>(null);
+  const [replyFen, setReplyFen] = useState<string | null>(null);
   const [settings] = useState<Settings>(loadSettings);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const loadExercises = (c: string, tc?: string, grav?: string) => {
     const params: Record<string, string> = { nombre: "6" };
@@ -62,6 +60,7 @@ export default function Training() {
         setSelected(null);
         setPendingPromo(null);
         setOpponentReply(null);
+        setReplyFen(null);
       })
       .catch((e) => setErr(String(e)));
   };
@@ -118,33 +117,39 @@ export default function Training() {
     setRevealed(true);
     setSelected(null);
     setOpponentReply(null);
-      api
-        .recordEtude({
-          username: user?.chesscom_username ?? "",
-          time_class: "global",
-          game_id: exercise.game_id,
-          ply: exercise.ply,
-          fen: exercise.fen_before,
-          san: exercise.san,
-          best_move_uci: exercise.best_move_uci,
-          best_move_san: exercise.best_move_san,
-          concept: exercise.concept ?? undefined,
-          attempt: res.uci,
-          correct: ok,
-        })
-        .then(() =>
-          api
-            .etudeStats()
-            .then((s) => setEtudes(s))
-            .catch(() => {}),
-        )
-        .catch(() => {});
+    api
+      .recordEtude({
+        username: user?.chesscom_username ?? "",
+        time_class: "global",
+        game_id: exercise.game_id,
+        ply: exercise.ply,
+        fen: exercise.fen_before,
+        san: exercise.san,
+        best_move_uci: exercise.best_move_uci,
+        best_move_san: exercise.best_move_san,
+        concept: exercise.concept ?? undefined,
+        attempt: res.uci,
+        correct: ok,
+      })
+      .then(() =>
+        api
+          .etudeStats()
+          .then((s) => setEtudes(s))
+          .catch(() => {}),
+      )
+      .catch(() => {});
     if (exercise.ply !== null && exercise.ply !== undefined) {
       api
         .game(exercise.game_id)
         .then((g) => {
           const next = g.plies.find((p) => p.ply === (exercise.ply as number) + 1);
-          if (next?.san) setOpponentReply(next.san);
+          if (next?.san) {
+            setOpponentReply(next.san);
+            if (ok && next.fen_after) {
+              setReplyFen(next.fen_after);
+              setBoardFen(next.fen_after);
+            }
+          }
         })
         .catch(() => {});
     }
@@ -173,7 +178,8 @@ export default function Training() {
     }
     setSelected(null);
     const isPawnPromo =
-      pieceAt(exercise.fen_before, selected)?.type === "p" && (square[1] === "1" || square[1] === "8");
+      pieceAt(exercise.fen_before, selected)?.type === "p" &&
+      (square[1] === "1" || square[1] === "8");
     if (isPawnPromo) {
       setPendingPromo({ from: selected, to: square });
     } else {
@@ -205,6 +211,7 @@ export default function Training() {
     setSelected(null);
     setPendingPromo(null);
     setOpponentReply(null);
+    setReplyFen(null);
   };
 
   const restart = () => setScore({ correct: 0, total: 0 });
@@ -215,7 +222,7 @@ export default function Training() {
   const colorLabel = exercise?.color === "w" ? "les Blancs" : "les Noirs";
 
   const arrows: Arrow[] = [];
-  if (revealed && exercise?.best_move_uci) {
+  if (revealed && exercise?.best_move_uci && !replyFen) {
     arrows.push([
       exercise.best_move_uci.slice(0, 2) as Arrow[0],
       exercise.best_move_uci.slice(2, 4) as Arrow[1],
@@ -223,7 +230,40 @@ export default function Training() {
     ]);
   }
 
-  const stmLabel = exercise ? (sideToMove(exercise.fen_before) === "w" ? "Blancs" : "Noirs") : "";
+  const stmLabel = exercise
+    ? sideToMove(exercise.fen_before) === "w"
+      ? "Blancs"
+      : "Noirs"
+    : "";
+
+  const activeFilterLabel = [
+    concept ? (CONCEPT_LABEL[concept] ?? concept) : "",
+    timeClass ? { rapid: "Rapide", blitz: "Blitz" }[timeClass as "rapid" | "blitz"] : "",
+    gravity === "blunder"
+      ? "Gaffes"
+      : gravity === "blunder,mistake"
+        ? "+ erreurs"
+        : gravity === "blunder,mistake,inaccuracy"
+          ? "+ imprécisions"
+          : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const missingKeys = new Set((profile?.concepts_missing ?? []).map((c) => c.key));
+  const landingThemes = [...CONCEPT_LIST].sort((a, b) => {
+    const ma = missingKeys.has(a) ? 0 : 1;
+    const mb = missingKeys.has(b) ? 0 : 1;
+    return ma - mb;
+  });
+  const showThemeLanding = !concept && exercises.length === 0 && !err;
+
+  const themeChip = (active: boolean) =>
+    `rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+      active
+        ? "border-accent bg-accent text-accent-ink"
+        : "border-line text-muted hover:border-surface-3 hover:text-ink"
+    }`;
 
   return (
     <div className="flex flex-col gap-4">
@@ -237,60 +277,184 @@ export default function Training() {
               : " : déplace une pièce sur l'échiquier."}
           </p>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            onClick={() => {
-              setConcept("");
-              loadExercises("", timeClass, gravity);
-            }}
-            className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-              concept === "" ? "border-accent bg-accent text-accent-ink" : "border-line text-muted hover:border-surface-3 hover:text-ink"
-            }`}
-          >
-            Tous
-          </button>
-          {CONCEPT_LIST.filter((k) => conceptKeys.includes(k)).map((k) => (
+        <div className="flex items-center gap-2">
+          {concept && exercises.length > 0 && (
             <button
-              key={k}
               onClick={() => {
-                setConcept(k);
-                loadExercises(k, timeClass, gravity);
+                setConcept("");
+                setExercises([]);
+              }}
+              className="text-xs font-medium text-muted underline-offset-2 hover:text-ink hover:underline"
+            >
+              Changer de thème
+            </button>
+          )}
+          <button
+            onClick={() => setFiltersOpen((o) => !o)}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+              filtersOpen || activeFilterLabel
+                ? "border-accent/40 text-ink"
+                : "border-line text-muted hover:border-surface-3 hover:text-ink"
+            }`}
+            aria-expanded={filtersOpen}
+          >
+            <span>Filtres</span>
+            {activeFilterLabel && (
+              <span className="max-w-48 truncate text-muted">· {activeFilterLabel}</span>
+            )}
+            <ChevronRightIcon
+              className={`h-3.5 w-3.5 transition-transform ${filtersOpen ? "rotate-90" : ""}`}
+            />
+          </button>
+        </div>
+      </div>
+
+      {filtersOpen && (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => {
+                setConcept("");
+                loadExercises("", timeClass, gravity);
               }}
               className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                concept === k
+                concept === ""
                   ? "border-accent bg-accent text-accent-ink"
                   : "border-line text-muted hover:border-surface-3 hover:text-ink"
               }`}
             >
-              {CONCEPT_LABEL[k]}
+              Tous
             </button>
-          ))}
-        </div>
+            {CONCEPT_LIST.filter((k) => conceptKeys.includes(k)).map((k) => (
+              <button
+                key={k}
+                onClick={() => {
+                  setConcept(k);
+                  loadExercises(k, timeClass, gravity);
+                }}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  concept === k
+                    ? "border-accent bg-accent text-accent-ink"
+                    : "border-line text-muted hover:border-surface-3 hover:text-ink"
+                }`}
+              >
+                {CONCEPT_LABEL[k]}
+              </button>
+            ))}
+          </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-1">
+              {(
+                [
+                  { value: "", label: "Toutes cadences" },
+                  { value: "rapid", label: "Rapide" },
+                  { value: "blitz", label: "Blitz" },
+                ] as const
+              ).map((tc) => (
+                <button
+                  key={tc.value}
+                  onClick={() => {
+                    setTimeClass(tc.value);
+                    loadExercises(concept, tc.value, gravity);
+                  }}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    timeClass === tc.value
+                      ? "bg-surface-3 text-ink"
+                      : "text-muted hover:text-ink"
+                  }`}
+                >
+                  {tc.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-1">
+              {(
+                [
+                  { value: "blunder", label: "Gaffes" },
+                  { value: "blunder,mistake", label: "+ erreurs" },
+                  { value: "blunder,mistake,inaccuracy", label: "+ imprécisions" },
+                ] as const
+              ).map((g) => (
+                <button
+                  key={g.value}
+                  onClick={() => {
+                    setGravity(g.value);
+                    loadExercises(concept, timeClass, g.value);
+                  }}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    gravity === g.value
+                      ? "bg-surface-3 text-ink"
+                      : "text-muted hover:text-ink"
+                  }`}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showThemeLanding ? (
+        <Card>
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight">Choisis un thème</h2>
+            <p className="mt-0.5 text-xs text-muted">
+              Tes exercices sont tirés de tes propres parties (gaffes, erreurs,
+              imprécisions). Commence par un thème « à travailler ».
+            </p>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <button
+              onClick={() => {
+                setConcept("");
+                loadExercises("", timeClass, gravity);
+              }}
+              className={themeChip(false)}
+            >
+              Toutes les positions
+            </button>
+            {landingThemes.map((k) => (
+              <button
+                key={k}
+                onClick={() => {
+                  setConcept(k);
+                  loadExercises(k, timeClass, gravity);
+                }}
+                className={themeChip(false)}
+              >
+                {CONCEPT_LABEL[k]}
+                {missingKeys.has(k) && (
+                  <span className="ml-1.5 rounded bg-accent/15 px-1 py-px text-[10px] font-semibold text-accent">
+                    à travailler
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted">Cadence :</span>
             {(
               [
-                { value: "", label: "Toutes cadences" },
+                { value: "", label: "Toutes" },
                 { value: "rapid", label: "Rapide" },
                 { value: "blitz", label: "Blitz" },
               ] as const
             ).map((tc) => (
               <button
                 key={tc.value}
-                onClick={() => {
-                  setTimeClass(tc.value);
-                  loadExercises(concept, tc.value, gravity);
-                }}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  timeClass === tc.value ? "bg-surface-3 text-ink" : "text-muted hover:text-ink"
-                }`}
+                onClick={() => setTimeClass(tc.value)}
+                className={themeChip(timeClass === tc.value)}
               >
                 {tc.label}
               </button>
             ))}
           </div>
-          <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-1">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted">Difficulté :</span>
             {(
               [
                 { value: "blunder", label: "Gaffes" },
@@ -300,22 +464,17 @@ export default function Training() {
             ).map((g) => (
               <button
                 key={g.value}
-                onClick={() => {
-                  setGravity(g.value);
-                  loadExercises(concept, timeClass, g.value);
-                }}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  gravity === g.value ? "bg-surface-3 text-ink" : "text-muted hover:text-ink"
-                }`}
+                onClick={() => setGravity(g.value)}
+                className={themeChip(gravity === g.value)}
               >
                 {g.label}
               </button>
             ))}
           </div>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3">
+        </Card>
+      ) : (
+        <>
+          <div className="flex items-center gap-3">
         <span className="text-sm text-muted">
           <b className="text-ink tabular-nums">{score.correct}</b> /{" "}
           <b className="text-ink tabular-nums">{score.total}</b> coups du moteur trouvés
@@ -334,7 +493,9 @@ export default function Training() {
             <Board
               fen={boardFen ?? exercise.fen_before}
               orientation={
-                (exercise.color ?? sideToMove(exercise.fen_before)) === "b" ? "black" : "white"
+                (exercise.color ?? sideToMove(exercise.fen_before)) === "b"
+                  ? "black"
+                  : "white"
               }
               draggable={!revealed}
               onPieceDrop={onDrop}
@@ -351,18 +512,27 @@ export default function Training() {
             />
           ) : (
             <div className="flex flex-col gap-2 py-8 text-center">
-              <p className="text-sm text-muted">Aucune bévue disponible pour ce concept.</p>
+              <p className="text-sm text-muted">
+                Aucune bévue disponible pour ce concept.
+              </p>
               <p className="mx-auto max-w-sm text-xs leading-relaxed text-muted/80">
-                Les exercices sont générés depuis <b className="text-ink">tes parties analysées</b>.
-                Analyse quelques parties (synchronisation ou import) : elles apparaîtront ici
+                Les exercices sont générés depuis{" "}
+                <b className="text-ink">tes parties analysées</b>. Analyse quelques
+                parties (synchronisation ou import) : elles apparaîtront ici
                 automatiquement, classées par concept.
               </p>
               <div className="flex justify-center gap-2">
-                <Link to="/dashboard" className="text-xs font-medium text-accent hover:underline">
+                <Link
+                  to="/dashboard"
+                  className="text-xs font-medium text-accent hover:underline"
+                >
                   Synchroniser
                 </Link>
                 <span className="text-xs text-muted">·</span>
-                <Link to="/import" className="text-xs font-medium text-accent hover:underline">
+                <Link
+                  to="/import"
+                  className="text-xs font-medium text-accent hover:underline"
+                >
                   Importer une partie
                 </Link>
               </div>
@@ -372,11 +542,17 @@ export default function Training() {
             <span className="text-sm text-muted">
               {exercise
                 ? `Exercice ${idx + 1}/${exercises.length} · ${
-                    exercise.concept ? (CONCEPT_LABEL[exercise.concept] ?? exercise.concept) : "général"
+                    exercise.concept
+                      ? (CONCEPT_LABEL[exercise.concept] ?? exercise.concept)
+                      : "général"
                   }`
                 : "—"}
             </span>
-            <Button onClick={next} disabled={exercises.length === 0} className="px-3 py-1.5 text-xs">
+            <Button
+              onClick={next}
+              disabled={exercises.length === 0}
+              className="px-3 py-1.5 text-xs"
+            >
               Suivant
             </Button>
           </div>
@@ -406,24 +582,30 @@ export default function Training() {
                 )}
               </div>
               <p className="text-xs text-muted">
-                Coup <b className="text-ink">{exercise.move_number}</b> ·{" "}
-                {exercise.white} vs {exercise.black} · {exercise.result}
+                Coup <b className="text-ink">{exercise.move_number}</b> · {exercise.white}{" "}
+                vs {exercise.black} · {exercise.result}
                 {exercise.opening_name ? ` · ${exercise.opening_name}` : ""}
                 {exercise.end_time ? ` · ${formatDate(exercise.end_time)}` : ""}
               </p>
 
               {exercise.line && exercise.line.length > 0 ? (
                 <div className="mt-1">
-                  <h2 className="text-sm font-semibold tracking-tight">Suite de la partie</h2>
+                  <h2 className="text-sm font-semibold tracking-tight">
+                    Suite de la partie
+                  </h2>
                   <ul className="mt-1.5 flex flex-col gap-1">
                     {exercise.line.map((m, i) => (
-                      <li key={i} className="flex items-center justify-between gap-2 text-sm">
+                      <li
+                        key={i}
+                        className="flex items-center justify-between gap-2 text-sm"
+                      >
                         <span>
                           <span className="text-muted">({i + 1})</span>{" "}
                           <b className="text-ink">{m.san}</b>
                         </span>
                         <span className="text-xs text-muted">
-                          meilleur : <b className="text-accent">{m.best_move_san ?? "—"}</b>
+                          meilleur :{" "}
+                          <b className="text-accent">{m.best_move_san ?? "—"}</b>
                         </span>
                       </li>
                     ))}
@@ -443,13 +625,22 @@ export default function Training() {
                       : `Focalise-toi sur : ${CONCEPT_LABEL[options[0]] ?? "tes concepts"}`}
                   </p>
                   <p className="text-sm text-muted">
-                    Aux {stmLabel}. Clique une pièce puis sa case d'arrivée (ou glisse-la).
+                    Aux {stmLabel}. Clique une pièce puis sa case d'arrivée (ou
+                    glisse-la).
                   </p>
                 </>
               ) : (
                 <div className="flex flex-col gap-1.5 text-sm">
-                  <p className={isCorrect ? "font-medium text-[#3fb562]" : "font-medium text-[#d9534f]"}>
-                    {isCorrect ? "Exact ! C'était le coup du moteur." : "Pas tout à fait…"}
+                  <p
+                    className={
+                      isCorrect
+                        ? "font-medium text-eval-up"
+                        : "font-medium text-eval-down"
+                    }
+                  >
+                    {isCorrect
+                      ? "Exact ! C'était le coup du moteur."
+                      : "Pas tout à fait…"}
                   </p>
                   <p>
                     Ton coup : <b className="text-ink">{guessSan ?? proposed}</b>
@@ -459,15 +650,20 @@ export default function Training() {
                   </p>
                   {opponentReply && (
                     <p>
-                      Réplique adverse (dans la partie) : <b className="text-ink">{opponentReply}</b>
+                      Réplique adverse (dans la partie) :{" "}
+                      <b className="text-ink">{opponentReply}</b>
                     </p>
                   )}
                   <p className="text-xs text-muted">
-                    Dans ta partie, tu avais joué <b className="text-ink">{exercise.san}</b> au coup{" "}
+                    Dans ta partie, tu avais joué{" "}
+                    <b className="text-ink">{exercise.san}</b> au coup{" "}
                     {exercise.move_number}
-                    {settings.evalDisplay === "cp" && exercise.cp_loss !== null && exercise.cp_loss !== undefined
+                    {settings.evalDisplay === "cp" &&
+                    exercise.cp_loss !== null &&
+                    exercise.cp_loss !== undefined
                       ? ` — il perdait l'équivalent de ${(exercise.cp_loss / 100).toFixed(1)} pions`
-                      : exercise.winprob_loss !== null && exercise.winprob_loss !== undefined
+                      : exercise.winprob_loss !== null &&
+                          exercise.winprob_loss !== undefined
                         ? ` — il perdait ${exercise.winprob_loss} pts de probabilité`
                         : ""}
                     .
@@ -507,7 +703,12 @@ export default function Training() {
                       className="h-full rounded-full"
                       style={{
                         width: `${Math.min(100, c.correct_rate)}%`,
-                        backgroundColor: c.correct_rate >= 80 ? "#3fb562" : c.correct_rate >= 50 ? "#d9a441" : "#d9534f",
+                        backgroundColor:
+                          c.correct_rate >= 80
+                            ? "#3fb562"
+                            : c.correct_rate >= 50
+                              ? "#d9a441"
+                              : "#d9534f",
                       }}
                     />
                   </div>
@@ -529,6 +730,8 @@ export default function Training() {
           ) : null}
         </Card>
       </div>
+        </>
+      )}
     </div>
   );
 }

@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 # classes de temps analysées
 TIME_CLASSES = {"rapid", "blitz"}
 
+# délai entre chaque requête d'archive chess.com (respect des limites de l'API)
+ARCHIVE_DELAY_S = 1.3
+
 
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -96,6 +99,8 @@ class SyncPipeline:
             new = 0
             for url in archives:
                 games = await self.chesscom.get_month(url)
+                if url is not archives[-1]:
+                    await asyncio.sleep(ARCHIVE_DELAY_S)
                 for raw in games:
                     seen += 1
                     try:

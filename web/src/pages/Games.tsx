@@ -120,17 +120,17 @@ export default function Games() {
       {status !== "analyzed" || !form ? null : (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface-2 px-3 py-2 text-xs">
           <span className="text-muted">Forme (10 dernières) :</span>
-          <span className="font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+          <span className="font-semibold text-eval-up tabular-nums">
             {form.w}V
           </span>
-          <span className="font-medium text-zinc-600 dark:text-zinc-400 tabular-nums">
+          <span className="font-medium text-muted tabular-nums">
             {form.d}N
           </span>
-          <span className="font-semibold text-red-600 dark:text-red-400 tabular-nums">
+          <span className="font-semibold text-eval-down tabular-nums">
             {form.l}D
           </span>
           {form.streak !== 0 && (
-            <span className={form.streak > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
+            <span className={form.streak > 0 ? "text-eval-up" : "text-eval-down"}>
               Série : {Math.abs(form.streak)} {form.streak > 0 ? "victoire" : "défaite"}
               {Math.abs(form.streak) > 1 ? "s" : ""} d'affilée
             </span>

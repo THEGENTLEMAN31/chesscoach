@@ -50,6 +50,14 @@ function Toggle({
   );
 }
 
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="mt-4 px-1 text-xs font-semibold uppercase tracking-wider text-muted first:mt-0">
+      {children}
+    </h2>
+  );
+}
+
 export default function Settings() {
   const { user } = useSession();
   const navigate = useNavigate();
@@ -74,104 +82,128 @@ export default function Settings() {
     navigate("/login", { replace: true });
   };
 
+  const boardSettings: { key: keyof GameSettings; label: string; hint: string }[] = [
+    {
+      key: "clickToMove",
+      label: "Clic pour jouer",
+      hint: "Cliquer une pièce puis la case d'arrivée (sinon, glisser-déposer).",
+    },
+    {
+      key: "showLegalMoves",
+      label: "Montrer les coups légaux",
+      hint: "Afficher les cases d'arrivée possibles sur l'échiquier.",
+    },
+    {
+      key: "showPlayedArrow",
+      label: "Flèche du coup joué",
+      hint: "Sur l'échiquier, montrer la flèche du coup réellement joué.",
+    },
+    {
+      key: "showBestArrow",
+      label: "Flèche du meilleur coup",
+      hint: "Montrer la flèche du meilleur coup calculé par le moteur.",
+    },
+  ];
+
+  const exerciseSettings: { key: keyof GameSettings; label: string; hint: string }[] = [
+    {
+      key: "autoNextQuiz",
+      label: "Enchaîner les exercices",
+      hint: "Passer automatiquement au coup suivant après révélation.",
+    },
+  ];
+
   return (
     <div className="flex max-w-xl flex-col gap-4">
       <h1 className="text-xl font-semibold tracking-tight">Réglages</h1>
 
+      <SectionTitle>Compte</SectionTitle>
       <Card className="flex items-center justify-between">
         <div>
-          <div className="text-sm font-medium">Compte</div>
+          <div className="text-sm font-medium">{user?.chesscom_username}</div>
           <div className="mt-0.5 text-xs text-muted">
-            {user?.email} · {user?.chesscom_username}
+            {user?.email}
+          </div>
+        </div>
+        <Button variant="ghost" onClick={() => void logout()} className="text-xs text-red-400 hover:bg-surface-3">
+          Se déconnecter
+        </Button>
+      </Card>
+
+      <SectionTitle>Affichage</SectionTitle>
+      <Card className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {theme === "dark" ? (
+              <MoonIcon className="h-4 w-4 text-muted" />
+            ) : (
+              <SunIcon className="h-4 w-4 text-muted" />
+            )}
+            <span className="text-sm">Thème clair</span>
+          </div>
+          <button
+            role="switch"
+            aria-checked={theme === "light"}
+            onClick={toggleTheme}
+            className={`relative h-6 w-11 rounded-full transition-colors ${
+              theme === "light" ? "bg-accent" : "bg-surface-3"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-ink/80 transition-transform ${
+                theme === "light" ? "translate-x-5" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+        </div>
+        <div className="border-t border-line pt-3">
+          <span className="block text-sm text-ink">Affichage des pertes</span>
+          <span className="mt-0.5 block text-xs text-muted">
+            En pions (CPL) ou en points de probabilité de gain.
+          </span>
+          <div className="mt-3 flex items-center gap-1 rounded-lg border border-line bg-surface-3/50 p-1">
+            {(["cp", "winprob"] as EvalDisplay[]).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => patchGame({ evalDisplay: mode })}
+                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  game.evalDisplay === mode
+                    ? "bg-accent text-accent-ink"
+                    : "text-muted hover:text-ink"
+                }`}
+              >
+                {mode === "cp" ? "Pions" : "Probabilité"}
+              </button>
+            ))}
           </div>
         </div>
       </Card>
 
-      <Card className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {theme === "dark" ? (
-            <MoonIcon className="h-4 w-4 text-muted" />
-          ) : (
-            <SunIcon className="h-4 w-4 text-muted" />
-          )}
-          <span className="text-sm">Thème clair</span>
-        </div>
-        <button
-          role="switch"
-          aria-checked={theme === "light"}
-          onClick={toggleTheme}
-          className={`relative h-6 w-11 rounded-full transition-colors ${
-            theme === "light" ? "bg-accent" : "bg-surface-3"
-          }`}
-        >
-          <span
-            className={`absolute top-0.5 h-5 w-5 rounded-full bg-ink/80 transition-transform ${
-              theme === "light" ? "translate-x-5" : "translate-x-0.5"
-            }`}
-          />
-        </button>
-      </Card>
-
-      {["clickToMove", "showLegalMoves", "showPlayedArrow", "showBestArrow", "autoNextQuiz"].map((key) => (
-        <Card key={key}>
+      <SectionTitle>Échiquier</SectionTitle>
+      <Card className="flex flex-col gap-4">
+        {boardSettings.map((s) => (
           <Toggle
-            checked={game[key as keyof GameSettings] as boolean}
-            onChange={(v) => patchGame({ [key]: v })}
-            label={
-              key === "clickToMove"
-                ? "Clic pour jouer"
-                : key === "showLegalMoves"
-                  ? "Montrer les coups légaux"
-                  : key === "showPlayedArrow"
-                    ? "Flèche du coup joué"
-                    : key === "showBestArrow"
-                      ? "Flèche du meilleur coup"
-                      : "Enchaîner les exercices"
-            }
-            hint={
-              key === "clickToMove"
-                ? "Cliquer une pièce puis la case d'arrivée (sinon, glisser-déposer)."
-                : key === "showLegalMoves"
-                  ? "Afficher les cases d'arrivée possibles sur l'échiquier."
-                  : key === "showPlayedArrow"
-                    ? "Sur l'échiquier, montrer la flèche du coup réellement joué."
-                    : key === "showBestArrow"
-                      ? "Montrer la flèche du meilleur coup calculé par le moteur."
-                      : "Passer automatiquement au coup suivant après révélation."
-            }
+            key={s.key}
+            checked={game[s.key] as boolean}
+            onChange={(v) => patchGame({ [s.key]: v })}
+            label={s.label}
+            hint={s.hint}
           />
-        </Card>
-      ))}
-
-      <Card>
-        <span className="block text-sm text-ink">Affichage des pertes</span>
-        <span className="mt-0.5 block text-xs text-muted">
-          En pions (CPL) ou en points de probabilité de gain.
-        </span>
-        <div className="mt-3 flex items-center gap-1 rounded-lg border border-line bg-surface-3/50 p-1">
-          {(["cp", "winprob"] as EvalDisplay[]).map((mode) => (
-            <button
-              key={mode}
-              onClick={() => patchGame({ evalDisplay: mode })}
-              className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                game.evalDisplay === mode
-                  ? "bg-accent text-accent-ink"
-                  : "text-muted hover:text-ink"
-              }`}
-            >
-              {mode === "cp" ? "Pions" : "Probabilité"}
-            </button>
-          ))}
-        </div>
+        ))}
       </Card>
 
-      <Button
-        variant="ghost"
-        onClick={() => void logout()}
-        className="justify-start text-red-400 hover:bg-surface-3"
-      >
-        Se déconnecter
-      </Button>
+      <SectionTitle>Exercices</SectionTitle>
+      <Card className="flex flex-col gap-4">
+        {exerciseSettings.map((s) => (
+          <Toggle
+            key={s.key}
+            checked={game[s.key] as boolean}
+            onChange={(v) => patchGame({ [s.key]: v })}
+            label={s.label}
+            hint={s.hint}
+          />
+        ))}
+      </Card>
     </div>
   );
 }

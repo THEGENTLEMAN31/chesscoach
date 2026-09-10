@@ -9,13 +9,14 @@ import VariantsPanel from "../components/VariantsPanel";
 import MoveList from "../components/MoveList";
 import { Button, Card } from "../components/ui";
 import { api } from "../lib/api";
-import { CLASS_COLOR, CLASS_LABEL, CONCEPT_LABEL, TIME_CLASS_LABEL, formatClock } from "../lib/constants";
 import {
-  legalMoveTargets,
-  pieceAt,
-  tryPlay,
-  type Promo,
-} from "../lib/game/board";
+  CLASS_COLOR,
+  CLASS_LABEL,
+  CONCEPT_LABEL,
+  TIME_CLASS_LABEL,
+  formatClock,
+} from "../lib/constants";
+import { legalMoveTargets, pieceAt, tryPlay, type Promo } from "../lib/game/board";
 import { playerWinProb } from "../lib/game/eval";
 import type { Settings } from "../lib/game/settings";
 import { loadSettings } from "../lib/game/settings";
@@ -50,15 +51,25 @@ export default function GameReview() {
   const [proposed, setProposed] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [quizScore, setQuizScore] = useState({ correct: 0, matched: 0, total: 0 });
+  const [attempts, setAttempts] = useState<
+    Record<number, { uci: string; correct: boolean }[]>
+  >({});
   const [boardFen, setBoardFen] = useState<string | null>(null);
   const [clickSquare, setClickSquare] = useState<Square | null>(null);
-  const [pendingPromo, setPendingPromo] = useState<{ from: Square; to: Square } | null>(null);
+  const [pendingPromo, setPendingPromo] = useState<{ from: Square; to: Square } | null>(
+    null,
+  );
   const [settings] = useState<Settings>(loadSettings);
   const { engine, state: engineState, analyse } = useAnalyse();
   const [live, setLive] = useState<LiveEval | null>(null);
   const [localBest, setLocalBest] = useState<Record<number, string>>({});
   const liveCache = useRef(new Map<string, LiveEval>());
   const localBestCache = useRef(new Map<number, string>());
+  const [panelsOpen, setPanelsOpen] = useState<Record<string, boolean>>({
+    variants: true,
+    taxonomy: false,
+    movelist: true,
+  });
 
   const isLocal = !/^\d+$/.test(id ?? "");
 
@@ -74,6 +85,7 @@ export default function GameReview() {
     setClickSquare(null);
     setPendingPromo(null);
     setQuizScore({ correct: 0, matched: 0, total: 0 });
+    setAttempts({});
     const plyParam = Number(params.get("ply"));
     const apply = (g: GameDetail) => {
       setGame(g);
@@ -96,17 +108,32 @@ export default function GameReview() {
 
   const quizPlies = useMemo(() => {
     if (!game) return [] as PlyOut[];
-    return game.plies.filter((p) => p.is_player && p.classification && p.classification !== "book");
+    return game.plies.filter(
+      (p) => p.is_player && p.classification && p.classification !== "book",
+    );
   }, [game]);
 
   const quizPly = useMemo(() => quizPlies[quizIndex] ?? null, [quizPlies, quizIndex]);
 
   const taxonomy = useMemo(() => {
-    if (!game) return [] as { cls: string; n: number; loss: number; concepts: { concept: string; n: number }[] }[];
-    const byCls = new Map<string, { n: number; loss: number; concepts: Map<string, number> }>();
+    if (!game)
+      return [] as {
+        cls: string;
+        n: number;
+        loss: number;
+        concepts: { concept: string; n: number }[];
+      }[];
+    const byCls = new Map<
+      string,
+      { n: number; loss: number; concepts: Map<string, number> }
+    >();
     for (const p of game.plies) {
       if (!p.is_player || !p.classification || p.classification === "book") continue;
-      const e = byCls.get(p.classification) ?? { n: 0, loss: 0, concepts: new Map<string, number>() };
+      const e = byCls.get(p.classification) ?? {
+        n: 0,
+        loss: 0,
+        concepts: new Map<string, number>(),
+      };
       e.n += 1;
       e.loss += p.winprob_loss ?? 0;
       if (p.concept) e.concepts.set(p.concept, (e.concepts.get(p.concept) ?? 0) + 1);
@@ -146,7 +173,16 @@ export default function GameReview() {
 
   const position = boardFen ?? baseFen;
 
-  const liveKey = mode === "engine" ? `e:${position}` : `q:${quizPly?.ply ?? ""}:${position}`;
+  const plyColor = useMemo(() => {
+    try {
+      return new Chess(position).turn() === "w" ? "w" : "b";
+    } catch {
+      return "w";
+    }
+  }, [position]);
+
+  const liveKey =
+    mode === "engine" ? `e:${position}` : `q:${quizPly?.ply ?? ""}:${position}`;
 
   useEffect(() => {
     if (!engineState.ready || mode !== "engine") return;
@@ -169,7 +205,12 @@ export default function GameReview() {
             bestSan = null;
           }
         }
-        const entry: LiveEval = { key: liveKey, cp: r.cp, best: r.pv[0] ?? null, bestSan };
+        const entry: LiveEval = {
+          key: liveKey,
+          cp: r.cp,
+          best: r.pv[0] ?? null,
+          bestSan,
+        };
         liveCache.current.set(liveKey, entry);
         setLive(entry);
       });
@@ -228,7 +269,6 @@ export default function GameReview() {
     return () => window.removeEventListener("keydown", onKey);
   }, [mode, selected, game]);
 
-
   const localBestSan = useMemo(() => {
     if (!quizPly || !localBest[quizPly.ply]) return null;
     try {
@@ -268,21 +308,35 @@ export default function GameReview() {
   const bestTo = displayPly?.best_move?.slice(2, 4);
 
   const squareStyles: CustomSquareStyles = {};
-  if (playedFrom) squareStyles[playedFrom as keyof CustomSquareStyles] = { background: "rgba(217,164,65,0.3)" };
-  if (playedTo) squareStyles[playedTo as keyof CustomSquareStyles] = { background: "rgba(217,164,65,0.3)" };
+  if (playedFrom)
+    squareStyles[playedFrom as keyof CustomSquareStyles] = {
+      background: "rgba(217,164,65,0.3)",
+    };
+  if (playedTo)
+    squareStyles[playedTo as keyof CustomSquareStyles] = {
+      background: "rgba(217,164,65,0.3)",
+    };
 
   const arrows: Arrow[] = [];
   const reveal = mode === "quiz" ? revealed : true;
   if (reveal && bestFrom && bestTo && settings.showBestArrow) {
     arrows.push([bestFrom as Arrow[0], bestTo as Arrow[1], "#2f7cd6"]);
   }
-  if (reveal && playedFrom && playedTo && settings.showPlayedArrow && displayPly?.classification && displayPly.classification !== "book") {
+  if (
+    reveal &&
+    playedFrom &&
+    playedTo &&
+    settings.showPlayedArrow &&
+    displayPly?.classification &&
+    displayPly.classification !== "book"
+  ) {
     const c = CLASS_COLOR[displayPly.classification] ?? "#8f97a1";
     arrows.push([playedFrom as Arrow[0], playedTo as Arrow[1], c]);
   }
 
   const playGuess = (from: Square, to: Square, promo?: Promo) => {
-    const start = mode === "quiz" ? quizPly?.fen_before ?? START_FEN : boardFen ?? baseFen;
+    const start =
+      mode === "quiz" ? (quizPly?.fen_before ?? START_FEN) : (boardFen ?? baseFen);
     if (!start) return;
     const res = tryPlay(start, from, to, promo);
     if (!res) return;
@@ -290,13 +344,23 @@ export default function GameReview() {
     setBoardFen(res.fen);
     setClickSquare(null);
     if (mode === "quiz" && quizPly) {
-      const bestUci = quizPly.best_move ?? localBestCache.current.get(quizPly.ply) ?? null;
-      setQuizScore((s) => ({
-        ...s,
-        total: s.total + 1,
-        correct: s.correct + (res.uci === bestUci ? 1 : 0),
-        matched: s.matched + (res.uci === quizPly.uci ? 1 : 0),
+      const bestUci =
+        quizPly.best_move ?? localBestCache.current.get(quizPly.ply) ?? null;
+      const attempt = { uci: res.uci, correct: res.uci === bestUci };
+      const previousAttempts = attempts[quizIndex] ?? [];
+      const isFirstAttempt = previousAttempts.length === 0;
+      setAttempts((prev) => ({
+        ...prev,
+        [quizIndex]: [...(prev[quizIndex] ?? []), attempt],
       }));
+      if (isFirstAttempt) {
+        setQuizScore((s) => ({
+          ...s,
+          total: s.total + 1,
+          correct: s.correct + (res.uci === bestUci ? 1 : 0),
+          matched: s.matched + (res.uci === quizPly.uci ? 1 : 0),
+        }));
+      }
       setRevealed(true);
       api
         .recordEtude({
@@ -317,8 +381,13 @@ export default function GameReview() {
   };
 
   const onSquareClick = (square: Square) => {
-    if (mode !== "quiz" || revealed || !settings.clickToMove || pendingPromo || !quizPly) return;
-    const fen = quizPly.fen_before;
+    if (pendingPromo) return;
+    if (mode === "quiz" && (!settings.clickToMove || !quizPly)) return;
+    const fen =
+      mode === "quiz"
+        ? (quizPly?.fen_before ?? null)
+        : (boardFen ?? baseFen);
+    if (!fen) return;
     const stm = fen.split(" ")[1] === "b" ? "b" : "w";
     const piece = pieceAt(fen, square);
     if (!clickSquare) {
@@ -349,8 +418,9 @@ export default function GameReview() {
   };
 
   const onDrop = (source: string, target: string, piece?: string) => {
-    if (revealed || pendingPromo) return false;
-    const start = mode === "quiz" ? quizPly?.fen_before ?? START_FEN : boardFen ?? baseFen;
+    if (pendingPromo) return false;
+    const start =
+      mode === "quiz" ? (quizPly?.fen_before ?? START_FEN) : (boardFen ?? baseFen);
     if (!start) return false;
     const from = source as Square;
     const to = target as Square;
@@ -366,16 +436,40 @@ export default function GameReview() {
     return true;
   };
 
-  const nextQuiz = () => {
-    setQuizIndex((i) => (i + 1 >= quizPlies.length ? 0 : i + 1));
+  const resetQuizState = () => {
     setProposed(null);
     setRevealed(false);
+    setBoardFen(null);
     setClickSquare(null);
     setPendingPromo(null);
   };
 
-  const quizAnswer = revealed && proposed ? proposed === (quizPly?.best_move ?? localBest[quizPly.ply] ?? null) : null;
+  const nextQuiz = () => {
+    setQuizIndex((i) => (i + 1 >= quizPlies.length ? 0 : i + 1));
+    resetQuizState();
+  };
 
+  const prevQuiz = () => {
+    setQuizIndex((i) => (i - 1 < 0 ? quizPlies.length - 1 : i - 1));
+    resetQuizState();
+  };
+
+  const retryQuiz = () => {
+    resetQuizState();
+  };
+
+  const quizAnswer =
+    revealed && proposed
+      ? proposed === (quizPly?.best_move ?? localBest[quizPly.ply] ?? null)
+      : null;
+
+  useEffect(() => {
+    if (revealed && settings.autoNextQuiz && mode === "quiz") {
+      const t = setTimeout(nextQuiz, 1600);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealed, settings.autoNextQuiz, quizIndex]);
 
   const back = (
     <button
@@ -406,44 +500,66 @@ export default function GameReview() {
         </div>
       </div>
 
-      <Card>
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
-          <span>
-            <strong className="text-ink">{game.white}</strong>{" "}
-            <span className="tabular-nums text-muted">({game.white_elo ?? "?"})</span>
+      <Card className="py-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          <span className="min-w-0">
+            <button
+              onClick={() => setSelected(plyColor === "w" ? 0 : 1)}
+              className={`max-w-40 truncate font-medium ${plyColor === "w" ? "text-accent underline underline-offset-2" : "text-ink hover:underline"}`}
+              title={game.white}
+            >
+              {game.white}
+            </button>{" "}
+            <span className="text-xs tabular-nums text-muted">
+              {game.white_elo ?? "?"}
+            </span>
           </span>
-          <span className="text-muted">vs</span>
-          <span>
-            <strong className="text-ink">{game.black}</strong>{" "}
-            <span className="tabular-nums text-muted">({game.black_elo ?? "?"})</span>
+          <span className="text-xs text-muted">vs</span>
+          <span className="min-w-0">
+            <button
+              onClick={() => setSelected(plyColor === "b" ? 1 : 0)}
+              className={`max-w-40 truncate font-medium ${plyColor === "b" ? "text-accent underline underline-offset-2" : "text-ink hover:underline"}`}
+              title={game.black}
+            >
+              {game.black}
+            </button>{" "}
+            <span className="text-xs tabular-nums text-muted">
+              {game.black_elo ?? "?"}
+            </span>
           </span>
-          <span className="rounded-md bg-surface-3 px-2 py-0.5 text-xs font-semibold tabular-nums text-ink">
+          <span className="rounded-md bg-surface-3 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-ink">
             {game.result}
           </span>
+          <span className="text-[11px] text-muted">
+            {TIME_CLASS_LABEL[game.time_class] ?? game.time_class}
+            {game.time_control ? ` · ${game.time_control}` : ""}
+          </span>
         </div>
-        <p className="mt-1 text-xs text-muted">
-          {TIME_CLASS_LABEL[game.time_class] ?? game.time_class} ·{" "}
-          {game.time_control ?? "—"}
-          {game.opening_name ? ` · ${game.opening_name}` : ""}
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className="rounded-md border border-line bg-surface-3/60 px-2.5 py-1 text-xs text-muted">
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted">
+          {game.opening_name ? <span>{game.opening_name}</span> : null}
+          <span className="tabular-nums">
             Précision : <b className="text-ink">{game.accuracy ?? "—"}%</b>
           </span>
-          <span className="rounded-md border border-line bg-surface-3/60 px-2.5 py-1 text-xs text-muted">
-            ACPL : <b className="text-ink">{game.acpl ?? "—"}</b>
-          </span>
+          {game.acpl !== null && game.acpl !== undefined && (
+            <span className="tabular-nums">
+              ACPL : <b className="text-ink">{game.acpl}</b>
+            </span>
+          )}
           {game.classifications &&
             Object.entries(game.classifications).map(([k, v]) => (
-              <span
-                key={k}
-                className="rounded-md border border-line bg-surface-3/60 px-2.5 py-1 text-xs"
-                style={{ color: CLASS_COLOR[k] ?? "var(--muted)" }}
-              >
-                {CLASS_LABEL[k] ?? k} : {v}
+              <span key={k} className="inline-flex items-center gap-1">
+                <i
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: CLASS_COLOR[k] ?? "var(--muted)" }}
+                  aria-hidden
+                />
+                <b style={{ color: CLASS_COLOR[k] ?? "var(--muted)" }}>
+                  {CLASS_LABEL[k] ?? k}
+                </b>{" "}
+                {v}
               </span>
             ))}
-        </div>
+        </p>
       </Card>
 
       {game.plies.length === 0 ? (
@@ -452,9 +568,9 @@ export default function GameReview() {
             Partie en attente d'analyse
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Cette partie vient d'être récupérée depuis chess.com mais le moteur
-            ne l'a pas encore analysée. L'analyse est automatique : reviens dans
-            quelques minutes pour la revoir.
+            Cette partie vient d'être récupérée depuis chess.com mais le moteur ne l'a pas
+            encore analysée. L'analyse est automatique : reviens dans quelques minutes
+            pour la revoir.
           </p>
           <Button onClick={() => navigate("/games")} className="mt-3">
             Retour aux parties
@@ -465,23 +581,23 @@ export default function GameReview() {
           <Card>
             <div className="flex items-start justify-center gap-3">
               <div className="min-w-0 flex-1">
-              <Board
-                fen={position}
-                orientation={game.player_color === "b" ? "black" : "white"}
-                draggable={mode === "engine" ? true : !revealed}
-                onPieceDrop={onDrop}
-                onSquareClick={onSquareClick}
-                arrows={arrows}
-                squareStyles={squareStyles}
-                selected={clickSquare}
-                pendingPromo={pendingPromo}
-                onPromo={(p) => {
-                  if (!pendingPromo) return;
-                  const { from, to } = pendingPromo;
-                  setPendingPromo(null);
-                  playGuess(from, to, p);
-                }}
-              />
+                <Board
+                  fen={position}
+                  orientation={game.player_color === "b" ? "black" : "white"}
+                  draggable={mode === "engine" || !pendingPromo}
+                  onPieceDrop={onDrop}
+                  onSquareClick={onSquareClick}
+                  arrows={arrows}
+                  squareStyles={squareStyles}
+                  selected={clickSquare}
+                  pendingPromo={pendingPromo}
+                  onPromo={(p) => {
+                    if (!pendingPromo) return;
+                    const { from, to } = pendingPromo;
+                    setPendingPromo(null);
+                    playGuess(from, to, p);
+                  }}
+                />
               </div>
               {mode === "engine" && !engineState.failed && (
                 <div className="shrink-0">
@@ -525,7 +641,10 @@ export default function GameReview() {
                     <p className="mt-1 text-xs text-muted">
                       Évaluation par le moteur local (WASM).
                       {!ply?.best_move_san && live?.bestSan ? (
-                        <> Coup suggéré : <b className="text-ink">{live.bestSan}</b></>
+                        <>
+                          {" "}
+                          Coup suggéré : <b className="text-ink">{live.bestSan}</b>
+                        </>
                       ) : null}
                     </p>
                   </>
@@ -557,7 +676,11 @@ export default function GameReview() {
                 </>
               ) : (
                 <>
-                  <Button onClick={nextQuiz} disabled={quizPlies.length === 0} className="px-3 py-1.5 text-xs">
+                  <Button
+                    onClick={nextQuiz}
+                    disabled={quizPlies.length === 0}
+                    className="px-3 py-1.5 text-xs"
+                  >
                     Coup suivant
                   </Button>
                   <span className="text-sm text-muted">
@@ -574,82 +697,186 @@ export default function GameReview() {
             {mode === "engine" ? (
               <>
                 <Card>
-                  <VariantsPanel
-                    fen={position}
-                    playerColor={game.player_color}
-                    engine={engine}
-                    engineReady={engineState.ready}
-                    onPlay={(uci, _san, fen) => { void _san;
-                      setBoardFen(fen);
-                      setProposed(uci);
-                      setClickSquare(null);
-                      setPendingPromo(null);
-                    }}
-                  />
+                  <button
+                    onClick={() =>
+                      setPanelsOpen((p) => ({ ...p, variants: !p.variants }))
+                    }
+                    className="flex w-full items-center justify-between text-left"
+                    aria-expanded={panelsOpen.variants}
+                  >
+                    <h2 className="text-sm font-semibold tracking-tight">Variantes</h2>
+                    <ChevronRightIcon
+                      className={`h-4 w-4 text-muted transition-transform ${panelsOpen.variants ? "rotate-90" : ""}`}
+                    />
+                  </button>
+                  {panelsOpen.variants && (
+                    <div className="mt-2">
+                      <VariantsPanel
+                        fen={position}
+                        playerColor={game.player_color}
+                        engine={engine}
+                        engineReady={engineState.ready}
+                        onPlay={(uci, _san, fen) => {
+                          void _san;
+                          setBoardFen(fen);
+                          setProposed(uci);
+                          setClickSquare(null);
+                          setPendingPromo(null);
+                        }}
+                      />
+                    </div>
+                  )}
                 </Card>
                 <Card>
                   <EvalCurve game={game} />
                 </Card>
-                <Card className="flex flex-col gap-3">
-                  {ply?.best_move_san && (
-                    <p className="text-sm">
-                      Coup suggéré : <b className="text-ink">{ply.best_move_san}</b>
-                    </p>
+                <Card>
+                  <button
+                    onClick={() =>
+                      setPanelsOpen((p) => ({ ...p, movelist: !p.movelist }))
+                    }
+                    className="flex w-full items-center justify-between text-left"
+                    aria-expanded={panelsOpen.movelist}
+                  >
+                    <h2 className="text-sm font-semibold tracking-tight">Coups</h2>
+                    <ChevronRightIcon
+                      className={`h-4 w-4 text-muted transition-transform ${panelsOpen.movelist ? "rotate-90" : ""}`}
+                    />
+                  </button>
+                  {panelsOpen.movelist && (
+                    <div className="mt-2">
+                      {ply?.best_move_san && (
+                        <p className="text-sm">
+                          Coup suggéré : <b className="text-ink">{ply.best_move_san}</b>
+                        </p>
+                      )}
+                      {ply?.concept && (
+                        <p className="text-sm">
+                          Concept :{" "}
+                          <b className="text-accent">
+                            {CONCEPT_LABEL[ply.concept] ?? ply.concept}
+                          </b>
+                        </p>
+                      )}
+                      {ply?.time_taken !== null && ply?.time_taken !== undefined && (
+                        <p className="text-xs text-muted">
+                          Temps de réflexion : {formatClock(ply.time_taken)}
+                        </p>
+                      )}
+                      <MoveList
+                        plies={game.plies}
+                        selectedPly={selected}
+                        onSelect={setSelected}
+                      />
+                    </div>
                   )}
-                  {ply?.concept && (
-                    <p className="text-sm">
-                      Concept : <b className="text-accent">{CONCEPT_LABEL[ply.concept] ?? ply.concept}</b>
-                    </p>
-                  )}
-                  {ply?.time_taken !== null && ply?.time_taken !== undefined && (
-                    <p className="text-xs text-muted">
-                      Temps de réflexion : {formatClock(ply.time_taken)}
-                    </p>
-                  )}
-                  <MoveList plies={game.plies} selectedPly={selected} onSelect={setSelected} />
                 </Card>
                 {taxonomy.length > 0 && (
                   <Card>
-                    <h2 className="text-sm font-semibold tracking-tight">Taxonomie détaillée</h2>
-                    <ul className="mt-2 flex flex-col gap-2">
-                      {taxonomy.map((t) => (
-                        <li key={t.cls} className="flex flex-col gap-1 rounded-lg border border-line/50 bg-surface-2/50 px-2.5 py-2">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span className="text-sm font-medium" style={{ color: CLASS_COLOR[t.cls] }}>
-                              {CLASS_LABEL[t.cls] ?? t.cls}
-                            </span>
-                            <span className="text-xs text-muted tabular-nums">
-                              {t.n} coup{t.n > 1 ? "s" : ""}
-                              {t.loss > 0 ? ` · −${t.loss.toFixed(1)} pts de proba` : ""}
-                            </span>
-                          </div>
-                          {t.concepts.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {t.concepts.map((c) => (
-                                <span key={c.concept} className="rounded-md border border-line bg-surface-3/60 px-1.5 py-0.5 text-[10px] text-muted">
-                                  {CONCEPT_LABEL[c.concept] ?? c.concept} ×{c.n}
-                                </span>
-                              ))}
+                    <button
+                      onClick={() =>
+                        setPanelsOpen((p) => ({ ...p, taxonomy: !p.taxonomy }))
+                      }
+                      className="flex w-full items-center justify-between text-left"
+                      aria-expanded={panelsOpen.taxonomy}
+                    >
+                      <h2 className="text-sm font-semibold tracking-tight">
+                        Taxonomie détaillée
+                      </h2>
+                      <ChevronRightIcon
+                        className={`h-4 w-4 text-muted transition-transform ${panelsOpen.taxonomy ? "rotate-90" : ""}`}
+                      />
+                    </button>
+                    {panelsOpen.taxonomy && (
+                      <ul className="mt-2 flex flex-col gap-2">
+                        {taxonomy.map((t) => (
+                          <li
+                            key={t.cls}
+                            className="flex flex-col gap-1 rounded-lg border border-line/50 bg-surface-2/50 px-2.5 py-2"
+                          >
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span
+                                className="text-sm font-medium"
+                                style={{ color: CLASS_COLOR[t.cls] }}
+                              >
+                                {CLASS_LABEL[t.cls] ?? t.cls}
+                              </span>
+                              <span className="text-xs text-muted tabular-nums">
+                                {t.n} coup{t.n > 1 ? "s" : ""}
+                                {t.loss > 0
+                                  ? ` · −${t.loss.toFixed(1)} pts de proba`
+                                  : ""}
+                              </span>
                             </div>
-                          ) : (
-                            <span className="text-[11px] text-muted/70">Aucun concept attribué</span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
+                            {t.concepts.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {t.concepts.map((c) => (
+                                  <span
+                                    key={c.concept}
+                                    className="rounded-md border border-line bg-surface-3/60 px-1.5 py-0.5 text-[10px] text-muted"
+                                  >
+                                    {CONCEPT_LABEL[c.concept] ?? c.concept} ×{c.n}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-muted/70">
+                                Aucun concept attribué
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </Card>
                 )}
               </>
             ) : (
               <Card>
-                <h2 className="text-sm font-semibold tracking-tight">Teste-toi</h2>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold tracking-tight">Teste-toi</h2>
+                  {quizPlies.length > 0 && (
+                    <span className="text-xs text-muted tabular-nums">
+                      {quizIndex + 1} / {quizPlies.length}
+                    </span>
+                  )}
+                </div>
+                {quizPlies.length > 1 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {quizPlies.map((_, i) => {
+                      const solved = (attempts[i] ?? []).some((a) => a.correct);
+                      const attempted = (attempts[i] ?? []).length > 0;
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            setQuizIndex(i);
+                            resetQuizState();
+                          }}
+                          className={`h-2 w-2 rounded-full transition-colors ${
+                            i === quizIndex
+                              ? "scale-125 bg-accent"
+                              : solved
+                                ? "bg-eval-up"
+                                : attempted
+                                  ? "bg-eval-down"
+                                  : "bg-surface-3 hover:bg-muted"
+                          }`}
+                          aria-label={`Exercice ${i + 1}`}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
                 {quizPlies.length === 0 ? (
-                  <p className="mt-1 text-sm text-muted">Aucun coup à rejouer dans cette partie.</p>
+                  <p className="mt-1 text-sm text-muted">
+                    Aucun coup à rejouer dans cette partie.
+                  </p>
                 ) : (
                   <>
                     <p className="mt-1 text-sm text-muted">
-                      Rejoue ce coup toi-même avant de voir ce que tu as joué et ce
-                      que disait le moteur.
+                      Rejoue ce coup toi-même avant de voir ce que tu as joué et ce que
+                      disait le moteur.
                       {settings.clickToMove
                         ? " Clique une pièce puis sa case d'arrivée."
                         : " Déplace une pièce sur l'échiquier."}
@@ -661,12 +888,20 @@ export default function GameReview() {
                             Ton coup : <b className="text-ink">{guessSan ?? proposed}</b>
                           </>
                         ) : (
-                          <span className="text-muted">En attente d'un coup sur l'échiquier…</span>
+                          <span className="text-muted">
+                            En attente d'un coup sur l'échiquier…
+                          </span>
                         )}
                       </p>
                     ) : (
                       <div className="mt-3 flex flex-col gap-1.5 text-sm">
-                        <p className={quizAnswer ? "font-medium text-[#3fb562]" : "font-medium text-[#d9534f]"}>
+                        <p
+                          className={
+                            quizAnswer
+                              ? "font-medium text-eval-up"
+                              : "font-medium text-eval-down"
+                          }
+                        >
                           {quizAnswer
                             ? "Bien vu : tu as trouvé le coup du moteur !"
                             : "Pas tout à fait…"}
@@ -675,7 +910,10 @@ export default function GameReview() {
                           Coup joué : <b className="text-ink">{quizPly?.san}</b>
                         </p>
                         <p>
-                          Coup du moteur : <b className="text-ink">{quizPly?.best_move_san ?? localBestSan ?? "—"}</b>
+                          Coup du moteur :{" "}
+                          <b className="text-ink">
+                            {quizPly?.best_move_san ?? localBestSan ?? "—"}
+                          </b>
                         </p>
                         {quizPly?.concept && (
                           <p className="text-xs text-accent">
@@ -687,28 +925,65 @@ export default function GameReview() {
                             Classement : {CLASS_LABEL[quizPly.classification]}
                           </p>
                         )}
-                        {quizPly && quizPly.cp_loss !== null && quizPly.cp_loss !== undefined && (
-                          <p className="text-xs text-muted">
-                            Perte :{" "}
-                            {settings.evalDisplay === "winprob" && quizPly.winprob_loss !== null
-                              ? `${quizPly.winprob_loss} pts de probabilité`
-                              : `${(quizPly.cp_loss / 100).toFixed(1)} pions`}
-                          </p>
+                        {quizPly &&
+                          quizPly.cp_loss !== null &&
+                          quizPly.cp_loss !== undefined && (
+                            <p className="text-xs text-muted">
+                              Perte :{" "}
+                              {settings.evalDisplay === "winprob" &&
+                              quizPly.winprob_loss !== null
+                                ? `${quizPly.winprob_loss} pts de probabilité`
+                                : `${(quizPly.cp_loss / 100).toFixed(1)} pions`}
+                            </p>
+                          )}
+                        {(attempts[quizIndex] ?? []).length > 1 && (
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {attempts[quizIndex].map((a, i) => (
+                              <span
+                                key={i}
+                                className={`rounded-md border px-2 py-0.5 text-[10px] ${
+                                  a.correct
+                                    ? "border-eval-up/30 bg-eval-up/10 text-eval-up"
+                                    : "border-eval-down/30 bg-eval-down/10 text-eval-down"
+                                }`}
+                              >
+                                Essai {i + 1} : {a.uci} {a.correct ? "✓" : "✗"}
+                              </span>
+                            ))}
+                          </div>
                         )}
                         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
                           <span>
                             <b className="text-ink">{quizScore.correct}</b> coup du moteur
                           </span>
                           <span>
-                            <b className="text-ink">{quizScore.matched}</b> coup réellement joué
+                            <b className="text-ink">{quizScore.matched}</b> coup
+                            réellement joué
                           </span>
                           <span>
                             sur <b className="text-ink">{quizScore.total}</b> essais
                           </span>
                         </div>
-                        <Button onClick={nextQuiz} className="mt-2 w-max px-3 py-1.5 text-xs">
-                          Coup suivant
-                        </Button>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Button
+                            onClick={prevQuiz}
+                            variant="ghost"
+                            className="px-3 py-1.5 text-xs"
+                          >
+                            ← Précédent
+                          </Button>
+                          <Button
+                            onClick={retryQuiz}
+                            variant="ghost"
+                            className="px-3 py-1.5 text-xs"
+                          >
+                            Réessayer
+                          </Button>
+                          <Button onClick={nextQuiz} className="px-3 py-1.5 text-xs">
+                            Coup suivant
+                            <ChevronRightIcon className="ml-1 h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </>

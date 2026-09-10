@@ -41,9 +41,10 @@ async def stats(
     } for r in await cur.fetchall()]
 
     cur = await db.execute(
-        """SELECT classification AS cls, COUNT(*) AS n
-           FROM plies WHERE is_player=1 AND classification IS NOT NULL
-           GROUP BY classification ORDER BY n DESC""", ()
+        """SELECT p.classification AS cls, COUNT(*) AS n
+           FROM plies p JOIN games g ON g.id = p.game_id
+           WHERE g.username=? AND p.is_player=1 AND p.classification IS NOT NULL
+           GROUP BY p.classification ORDER BY n DESC""", (username,)
     )
     cls_counts = {r["cls"]: r["n"] for r in await cur.fetchall()}
 
@@ -55,9 +56,10 @@ async def stats(
     openings = [dict(r) for r in await cur.fetchall()]
 
     cur = await db.execute(
-        """SELECT ROUND(AVG(winprob_loss),1) AS blunder_acpl,
-                  ROUND(AVG(cp_loss),1) AS avg_cp_loss
-           FROM plies WHERE is_player=1 AND winprob_loss IS NOT NULL""", ()
+        """SELECT ROUND(AVG(p.winprob_loss),1) AS blunder_acpl,
+                  ROUND(AVG(p.cp_loss),1) AS avg_cp_loss
+           FROM plies p JOIN games g ON g.id = p.game_id
+           WHERE g.username=? AND p.is_player=1 AND p.winprob_loss IS NOT NULL""", (username,)
     )
     sr = await cur.fetchone()
 

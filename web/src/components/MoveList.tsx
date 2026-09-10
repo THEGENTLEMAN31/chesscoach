@@ -8,17 +8,28 @@ interface Props {
 }
 
 function PlyItem({ p, selected, onSelect }: { p: PlyOut; selected: boolean; onSelect: () => void }) {
+  const clsColor =
+    p.classification && p.classification !== "book"
+      ? CLASS_COLOR[p.classification]
+      : null;
   return (
     <button
       onClick={onSelect}
       title={`${p.san ?? ""} — ${p.classification ? (CLASS_LABEL[p.classification] ?? p.classification) : ""}`}
-      className={`rounded-md px-2 py-1 text-[13px] font-medium tabular-nums transition-colors ${
+      className={`relative rounded-md px-2 py-1 text-[13px] font-medium tabular-nums transition-colors ${
         selected
           ? "bg-accent/15 text-accent ring-1 ring-accent/40"
           : "text-ink hover:bg-surface-3"
       }`}
     >
-      {p.san ?? "…"}
+      {clsColor && (
+        <span
+          className="absolute inset-y-1 left-1 w-0.5 rounded-full"
+          style={{ backgroundColor: clsColor }}
+          aria-hidden
+        />
+      )}
+      <span className={clsColor ? "pl-1.5" : ""}>{p.san ?? "…"}</span>
       {p.time_taken !== null && p.time_taken !== undefined && (
         <span className="ml-1 text-[11px] text-muted">{formatClock(p.time_taken)}</span>
       )}

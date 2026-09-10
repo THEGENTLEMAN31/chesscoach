@@ -69,6 +69,7 @@ interface Pending {
 }
 
 const SEARCH_TIMEOUT_MS = 45_000;
+const BOOT_TIMEOUT_MS = 15_000;
 
 export class EngineWorker {
   private worker: Worker;
@@ -83,7 +84,7 @@ export class EngineWorker {
   }
 
   private boot(multiPv: number, hashMb: number): Promise<void> {
-    return new Promise<void>((resolve) => {
+    return new Promise<void>((resolve, reject) => {
       const readyListener = (e: MessageEvent) => {
         const data = e.data;
         if (typeof data !== "string") return;
@@ -95,7 +96,14 @@ export class EngineWorker {
           resolve();
         }
       };
+      const fail = (reason?: unknown) => {
+        this.worker.removeEventListener("message", readyListener);
+        clearTimeout(timer);
+        reject(new Error(reason instanceof Error ? reason.message : "Initialisation du moteur échouée"));
+      };
+      const timer = setTimeout(() => fail(new Error("Délai d'initialisation du moteur dépassé")), BOOT_TIMEOUT_MS);
       this.worker.addEventListener("message", readyListener);
+      this.worker.addEventListener("error", () => fail(new Error("Le moteur WASM n'a pas pu être chargé")));
       this.worker.postMessage("uci");
     });
   }

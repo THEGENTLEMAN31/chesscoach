@@ -81,7 +81,7 @@ body {
   outline: none;
 }
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is([data-theme="dark"] *, html:not([data-theme]) *));
 
 :root {
   --radius: 0.75rem;
@@ -109,6 +109,8 @@ body {
   --chart-3: #d9a441;
   --chart-4: #3fb562;
   --chart-5: #d9534f;
+  --eval-up: #3fb562;
+  --eval-down: #d9534f;
   --chart-background: var(--card);
   --chart-foreground: var(--foreground);
   --chart-foreground-muted: var(--muted-foreground);
@@ -154,6 +156,8 @@ body {
   --chart-3: #b8860b;
   --chart-4: #278a45;
   --chart-5: #c0392b;
+  --eval-up: #278a45;
+  --eval-down: #c0392b;
   --chart-background: var(--card);
   --chart-foreground: var(--foreground);
   --chart-foreground-muted: var(--muted-foreground);
@@ -224,11 +228,12 @@ body {
   --color-chart-foreground-muted: var(--chart-foreground-muted);
   --color-chart-foreground: var(--chart-foreground);
   --color-chart-background: var(--chart-background);
-  --color-eval-up: var(--chart-4);
-  --color-eval-down: var(--chart-5);
+  --color-eval-up: var(--eval-up);
+  --color-eval-down: var(--eval-down);
 }
 
-.dark {
+[data-theme="dark"],
+html:not([data-theme]) {
   --chart-1: oklch(1 0 none);
   --chart-2: oklch(0.73 0 none);
   --chart-3: oklch(0.51 0 none);

@@ -3,6 +3,7 @@ import EloChart from "../components/EloChart";
 import { Button, Card, Spinner } from "../components/ui";
 import { api } from "../lib/api";
 import { TIME_CLASS_LABEL } from "../lib/constants";
+import type { GameOut } from "../lib/types";
 import type { PlayerProfile } from "../lib/profile-types";
 
 interface ProfileHistory {
@@ -27,6 +28,7 @@ const PERIODS: { value: number; label: string }[] = [
 export default function Progression() {
   const [profiles, setProfiles] = useState<Record<string, PlayerProfile> | null>(null);
   const [history, setHistory] = useState<Record<string, ProfileHistory>>({});
+  const [games, setGames] = useState<Record<string, GameOut[]>>({});
   const [tab, setTab] = useState("global");
   const [period, setPeriod] = useState(0);
   const [err, setErr] = useState<string | null>(null);
@@ -35,6 +37,7 @@ export default function Progression() {
   const [dateMax, setDateMax] = useState("");
   const [eloMin, setEloMin] = useState<number | null>(null);
   const [eloMax, setEloMax] = useState<number | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -55,60 +58,78 @@ export default function Progression() {
         .then((h) => setHistory((prev) => ({ ...prev, [t.key]: h as unknown as ProfileHistory })))
         .catch(() => {});
     }
+    for (const tc of ["rapid", "blitz"]) {
+      api
+        .games({ time_class: tc, limit: "500" })
+        .then((g) => setGames((prev) => ({ ...prev, [tc]: g.items })))
+        .catch(() => {});
+    }
   }, []);
 
   const profile = profiles?.[tab] ?? profiles?.global ?? null;
   const hist = history[tab] ?? null;
 
   const cutoffMs = period > 0 ? Date.now() - period * 24 * 3600 * 1000 : 0;
-  const withinPeriod = (d: string) => (cutoffMs === 0 ? true : new Date(d).getTime() >= cutoffMs);
+
+  // Courbe par partie : on utilise les elo réels de chaque partie analysée.
+  const visible = (iso: string, elo: number | null) => {
+    if (elo == null) return false;
+    if (cutoffMs > 0 && Date.parse(iso) < cutoffMs) return false;
+    if (dateMin && Date.parse(iso) < Date.parse(dateMin)) return false;
+    if (dateMax && Date.parse(iso) > Date.parse(dateMax) + 86_399_999) return false;
+    if (eloMin != null && elo < eloMin) return false;
+    if (eloMax != null && elo > eloMax) return false;
+    return true;
+  };
+
+  const ptsFor = (tc: string) => {
+    const pts: { date: string; elo: number }[] = [];
+    for (const g of games[tc] ?? []) {
+      if (!g.end_time) continue;
+      const elo = g.player_color === "w" ? g.white_elo : g.black_elo;
+      if (elo == null) continue;
+      const iso = new Date(g.end_time * 1000).toISOString();
+      if (!visible(iso, elo)) continue;
+      pts.push({ date: iso, elo });
+    }
+    pts.sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+    return pts;
+  };
 
   const eloData = useMemo(() => {
-    if (hist && hist.dates.length > 1) {
-      const pts = hist.dates
-        .map((d, i) => ({ date: d, elo: hist.elo[i], games: hist.games[i] }))
-        .filter((p) => p.elo !== null && p.elo !== undefined && withinPeriod(p.date));
-      return pts;
-    }
-    return (profile?.progress.elo_curve || [])
-      .filter((p) => withinPeriod(p.date))
-      .map((p) => ({ date: p.date, elo: p.elo, games: undefined }));
+    const tcs = tab === "global" ? ["rapid", "blitz"] : [tab];
+    const pts = tcs.flatMap((tc) => ptsFor(tc));
+    pts.sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+    return pts;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hist, profile, period]);
+  }, [tab, games, period, dateMin, dateMax, eloMin, eloMax]);
 
   // Courbes affichées : rapide + blitz superposées sur « Toutes cadences ».
   const eloSeries = useMemo(() => {
-    const mk = (key: string, label: string, color: string) => {
-      const h = history[key];
-      if (h && h.dates && h.dates.length > 1) {
-        const dates: string[] = [];
-        const elo: (number | null)[] = [];
-        for (let i = 0; i < h.dates.length; i++) {
-          if (withinPeriod(h.dates[i])) {
-            dates.push(h.dates[i]);
-            elo.push(h.elo[i] ?? null);
-          }
-        }
-        if (dates.length > 1) return { label, color, dates, elo };
-      }
+    const mk = (tc: string, label: string, color: string) => {
+      const pts = ptsFor(tc);
+      if (pts.length > 1)
+        return { label, color, dates: pts.map((p) => p.date), elo: pts.map((p) => p.elo) };
       return null;
     };
     if (tab === "global") {
-      const out: { label: string; color: string; dates: string[]; elo: (number | null)[] }[] = [];
+      const out: { label: string; color: string; dates: string[]; elo: number[] }[] = [];
       const r = mk("rapid", "Rapide", "#6fa8dc");
       if (r) out.push(r);
       const b = mk("blitz", "Blitz", "#d9a441");
       if (b) out.push(b);
-      if (out.length === 0 && eloData.length > 1) {
-        out.push({ label: "Global", color: "#6fa8dc", dates: eloData.map((p) => p.date), elo: eloData.map((p) => Number(p.elo)) });
-      }
+      if (out.length === 0 && eloData.length > 1)
+        out.push({ label: "Global", color: "#6fa8dc", dates: eloData.map((p) => p.date), elo: eloData.map((p) => p.elo) });
       return out;
     }
-    const one = mk(tab, tab === "rapid" ? "Rapide" : "Blitz", tab === "rapid" ? "#6fa8dc" : "#d9a441");
-    return one ? [one] : eloData.length > 1
-      ? [{ label: tab, color: "#6fa8dc", dates: eloData.map((p) => p.date), elo: eloData.map((p) => Number(p.elo)) }]
+    const label = TIME_CLASS_LABEL[tab] ?? tab;
+    const one = mk(tab, label, tab === "rapid" ? "#6fa8dc" : "#d9a441");
+    if (one) return [one];
+    return eloData.length > 1
+      ? [{ label, color: "#6fa8dc", dates: eloData.map((p) => p.date), elo: eloData.map((p) => p.elo) }]
       : [];
-  }, [tab, history, eloData, period]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, games, eloData, period, dateMin, dateMax, eloMin, eloMax]);
 
   if (err) {
     return (
@@ -178,24 +199,52 @@ export default function Progression() {
             ))}
           </div>
         </div>
-        {/* filtres période + plage elo */}
-        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <label className="flex flex-col gap-0.5 text-[10px] text-muted">
-            Du
-            <input type="date" value={dateMin} onChange={(e) => setDateMin(e.target.value)} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
-          </label>
-          <label className="flex flex-col gap-0.5 text-[10px] text-muted">
-            Au
-            <input type="date" value={dateMax} onChange={(e) => setDateMax(e.target.value)} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
-          </label>
-          <label className="flex flex-col gap-0.5 text-[10px] text-muted">
-            Elo min
-            <input type="number" value={eloMin ?? ""} onChange={(e) => setEloMin(e.target.value === "" ? null : Number(e.target.value))} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
-          </label>
-          <label className="flex flex-col gap-0.5 text-[10px] text-muted">
-            Elo max
-            <input type="number" value={eloMax ?? ""} onChange={(e) => setEloMax(e.target.value === "" ? null : Number(e.target.value))} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
-          </label>
+        {/* filtres période + plage elo (repliables) */}
+        <div className="mt-2">
+          <button
+            onClick={() => setFiltersOpen((o) => !o)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-muted transition-colors hover:text-ink"
+            aria-expanded={filtersOpen}
+          >
+            Filtres
+            <svg
+              className={`h-3.5 w-3.5 transition-transform ${filtersOpen ? "rotate-180" : ""}`}
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden
+            >
+              <path
+                fillRule="evenodd"
+                d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                clipRule="evenodd"
+              />
+            </svg>
+            {(dateMin || dateMax || eloMin != null || eloMax != null) && (
+              <span className="rounded bg-accent/15 px-1 py-px text-[10px] font-semibold text-accent">
+                actifs
+              </span>
+            )}
+          </button>
+          {filtersOpen && (
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <label className="flex flex-col gap-0.5 text-[10px] text-muted">
+                Du
+                <input type="date" value={dateMin} onChange={(e) => setDateMin(e.target.value)} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
+              </label>
+              <label className="flex flex-col gap-0.5 text-[10px] text-muted">
+                Au
+                <input type="date" value={dateMax} onChange={(e) => setDateMax(e.target.value)} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
+              </label>
+              <label className="flex flex-col gap-0.5 text-[10px] text-muted">
+                Elo min
+                <input type="number" value={eloMin ?? ""} onChange={(e) => setEloMin(e.target.value === "" ? null : Number(e.target.value))} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
+              </label>
+              <label className="flex flex-col gap-0.5 text-[10px] text-muted">
+                Elo max
+                <input type="number" value={eloMax ?? ""} onChange={(e) => setEloMax(e.target.value === "" ? null : Number(e.target.value))} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
+              </label>
+            </div>
+          )}
         </div>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {eloData.length > 0 ? (
@@ -242,7 +291,7 @@ export default function Progression() {
               {profile.trends.improving.map((t) => (
                 <li key={t.key} className="text-sm">
                   <span className="font-medium text-ink">{t.label}</span>{" "}
-                  <span className="text-[#3fb562]">– {Math.abs(t.delta)} pts de part</span>{" "}
+                  <span className="text-eval-up">– {Math.abs(t.delta)} pts de part</span>{" "}
                   <span className="text-xs text-muted">
                     ({t.recent_share}% récent vs {t.overall_share}% global)
                   </span>
@@ -260,7 +309,7 @@ export default function Progression() {
               {profile.trends.worsening.map((t) => (
                 <li key={t.key} className="text-sm">
                   <span className="font-medium text-ink">{t.label}</span>{" "}
-                  <span className="text-[#d9534f]">+ {t.delta} pts de part</span>{" "}
+                  <span className="text-eval-down">+ {t.delta} pts de part</span>{" "}
                   <span className="text-xs text-muted">
                     ({t.recent_share}% récent vs {t.overall_share}% global)
                   </span>

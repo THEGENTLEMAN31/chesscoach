@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { Button, Card, Spinner, Stat } from "../components/ui";
 import { api } from "../lib/api";
 import { useSession } from "../lib/session";
@@ -92,6 +93,10 @@ export default function Profile() {
 
       <Card>
         <h2 className="text-sm font-semibold tracking-tight">Objectif Elo par format</h2>
+        <p className="mt-0.5 text-xs text-muted">
+          Définis ici ton objectif : la cible du tableau de bord clic menait ici — c'est
+          le seul endroit où elle se modifie.
+        </p>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1 text-xs text-muted">
             Rapide
@@ -170,11 +175,24 @@ export default function Profile() {
           ) : null}
           {profile.concepts_missing && profile.concepts_missing.length > 0 ? (
             <Card className="col-span-2">
-              <h2 className="text-sm font-medium text-muted">Concepts à travailler</h2>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-medium text-muted">Concepts à travailler</h2>
+                <Link
+                  to={`/training?concept=${encodeURIComponent(profile.concepts_missing[0].key)}`}
+                  className="text-xs font-medium text-accent hover:underline"
+                >
+                  S'entraîner sur ces concepts
+                </Link>
+              </div>
               <ul className="mt-2 flex flex-col gap-1.5">
                 {profile.concepts_missing.map((c, i) => (
                   <li key={i} className="flex items-baseline justify-between gap-2 text-sm">
-                    <span>{c.label}</span>
+                    <Link
+                      to={`/training?concept=${encodeURIComponent(c.key)}`}
+                      className="text-ink underline-offset-2 hover:text-accent hover:underline"
+                    >
+                      {c.label}
+                    </Link>
                     <span className="text-muted text-xs tabular-nums">
                       {c.n} coup{c.n > 1 ? "s" : ""}
                       {c.blunders > 0 ? ` · ${c.blunders} gaffe${c.blunders > 1 ? "s" : ""}` : ""}

@@ -110,30 +110,43 @@ export default function VariantsPanel({ fen, playerColor, engine, engineReady, o
         <p className="text-xs text-muted">Aucun coup légal.</p>
       ) : (
         <ul className="max-h-72 flex flex-col gap-0.5 overflow-y-auto">
-          {sorted.map((v) => {
+          {sorted.map((v, i) => {
             const delta = v.cp != null && baseCp != null ? v.cp - baseCp : null;
+            const isBest = i === 0 && sorted.length > 1;
             return (
-              <li key={v.uci} className="flex items-center justify-between gap-2 rounded-md border border-line bg-surface-2/60 px-2 py-1">
-                <div className="min-w-0 flex-1">
-                  <span className="truncate text-xs text-ink">{v.san}</span>
-                  {delta != null && (
-                    <span className={`ml-1 text-[10px] ${delta >= 0 ? "text-accent" : "text-red-400"}`}>
-                      {delta >= 0 ? "+" : ""}
-                      {(delta / 100).toFixed(1)}
+              <li key={v.uci}>
+                <button
+                  onClick={() => onPlay(v.uci, v.san, v.fen)}
+                  className={`flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1 text-left transition-colors hover:bg-surface-3 ${
+                    isBest
+                      ? "border-accent/40 bg-accent/5"
+                      : "border-line bg-surface-2/60"
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <span className="truncate text-xs text-ink">{v.san}</span>
+                    {isBest && (
+                      <span className="ml-1.5 rounded bg-accent/15 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-accent">
+                        meilleur
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <span className="text-[10px] tabular-nums text-muted">
+                      {v.cp != null ? `${v.cp >= 0 ? "+" : ""}${(v.cp / 100).toFixed(1)}` : "—"}
                     </span>
-                  )}
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <span className="text-[10px] tabular-nums text-muted">
-                    {v.cp != null ? `${v.cp >= 0 ? "+" : ""}${(v.cp / 100).toFixed(1)}` : "—"}
-                  </span>
-                  <button
-                    onClick={() => onPlay(v.uci, v.san, v.fen)}
-                    className="rounded-md border border-line px-2 py-0.5 text-[10px] text-accent hover:bg-surface-3"
-                  >
-                    Jouer
-                  </button>
-                </div>
+                    {delta != null && (
+                      <span
+                        className={`text-[10px] tabular-nums ${
+                          delta >= 0 ? "text-accent" : "text-eval-down"
+                        }`}
+                      >
+                        {delta >= 0 ? "+" : ""}
+                        {(delta / 100).toFixed(1)}
+                      </span>
+                    )}
+                  </div>
+                </button>
               </li>
             );
           })}
