@@ -605,20 +605,18 @@ export default function GameReview() {
                   }}
                 />
               </div>
-              {mode === "engine" && !engineState.failed && (
+              {mode === "engine" && (
                 <div className="shrink-0">
-                  <EvalBar
-                    wp={
-                      live?.cp != null
-                        ? playerWinProb({ cp: live.cp, mate: null }, game.player_color)
-                        : null
-                    }
-                    label={
-                      engineState.ready
-                        ? `${(live?.cp ?? 0) / 100 >= 0 ? "+" : ""}${((live?.cp ?? 0) / 100).toFixed(1)}`
-                        : "…"
-                    }
-                  />
+                  {(() => {
+                    const evalPt = live?.cp != null ? { cp: live.cp, mate: null } : (ply?.eval_after ?? null);
+                    const wp = playerWinProb(evalPt, game.player_color);
+                    const label = evalPt?.mate != null
+                      ? `M${evalPt.mate}`
+                      : evalPt?.cp != null
+                      ? `${evalPt.cp >= 0 ? "+" : ""}${(evalPt.cp / 100).toFixed(1)}`
+                      : "…";
+                    return <EvalBar wp={wp} label={label} />;
+                  })()}
                 </div>
               )}
             </div>

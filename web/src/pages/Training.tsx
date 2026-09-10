@@ -177,9 +177,6 @@ export default function Training() {
           const next = g.plies.find((p) => p.ply === (exercise.ply as number) + 1);
           if (next?.san) {
             setOpponentReply(next.san);
-            if (ok && next.fen_after) {
-              setBoardFen(next.fen_after);
-            }
           }
         })
         .catch(() => {});
@@ -512,27 +509,55 @@ const arrows = refMoveArrows;
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
         <Card>
           {exercise ? (
-<Board
-             fen={boardFen ?? exercise.fen_before}
-             orientation={
-               (exercise.color ?? sideToMove(exercise.fen_before)) === "b"
-                 ? "black"
-                 : "white"
-             }
-             draggable={!revealed}
-             onPieceDrop={onDrop}
-             onSquareClick={onSquareClick}
-             arrows={arrows}
-             selected={selected}
-             pendingPromo={pendingPromo}
-             squareStyles={userMoveStyle}
-             onPromo={(p) => {
-               if (!pendingPromo) return;
-               const { from, to } = pendingPromo;
-               setPendingPromo(null);
-               playMove(from, to, p);
-             }}
-           />
+            <div className="flex flex-col gap-3">
+              {revealed && (
+                <div
+                  className={`flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
+                    isCorrect
+                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                      : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                  }`}
+                >
+                  <span>
+                    {isCorrect ? "✅ Coup correct !" : `❌ Raté. Le meilleur coup était ${exercise.best_move_san}`}
+                  </span>
+                  {opponentReply && (
+                    <button
+                      onClick={() => {
+                        api.game(exercise.game_id).then((g) => {
+                          const n = g.plies.find((p) => p.ply === (exercise.ply as number) + 1);
+                          if (n?.fen_after) setBoardFen(n.fen_after);
+                        });
+                      }}
+                      className="text-xs font-semibold underline hover:opacity-80"
+                    >
+                      Voir la suite en partie ({opponentReply})
+                    </button>
+                  )}
+                </div>
+              )}
+              <Board
+                fen={boardFen ?? exercise.fen_before}
+                orientation={
+                  (exercise.color ?? sideToMove(exercise.fen_before)) === "b"
+                    ? "black"
+                    : "white"
+                }
+                draggable={!revealed}
+                onPieceDrop={onDrop}
+                onSquareClick={onSquareClick}
+                arrows={arrows}
+                selected={selected}
+                pendingPromo={pendingPromo}
+                squareStyles={userMoveStyle}
+                onPromo={(p) => {
+                  if (!pendingPromo) return;
+                  const { from, to } = pendingPromo;
+                  setPendingPromo(null);
+                  playMove(from, to, p);
+                }}
+              />
+            </div>
           ) : (
             <div className="flex flex-col gap-2 py-8 text-center">
               <p className="text-sm text-muted">

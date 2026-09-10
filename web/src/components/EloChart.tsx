@@ -19,7 +19,7 @@ interface EloChartProps {
 }
 
 const W = 940;
-const PAD = { top: 24, right: 24, bottom: 56, left: 56 };
+const PAD = { top: 32, right: 32, bottom: 64, left: 72 };
 
 function tsi(iso: string): number {
   const s = iso.length === 10 ? iso + "T00:00:00Z" : iso;
@@ -83,12 +83,13 @@ export default function EloChart({
   const tB = vis.reduce((a, p) => Math.max(a, tsi(p.iso)), Number.NEGATIVE_INFINITY);
   const eA = vis.reduce((a, p) => Math.min(a, p.e), Number.POSITIVE_INFINITY);
   const eB = vis.reduce((a, p) => Math.max(a, p.e), Number.NEGATIVE_INFINITY);
+  const padE = Math.max(15, Math.round((eB - eA) * 0.15));
   const tLo = Number.isFinite(fT0) ? fT0 : tA;
   const tHi = Number.isFinite(fT1) ? fT1 : tB;
-  const eLo = Number.isFinite(fE0) ? fE0 : Math.max(0, Math.floor((eA - 50) / 50) * 50);
-  const eHi = Number.isFinite(fE1) ? fE1 : Math.ceil((eB + 50) / 50) * 50;
+  const eLo = Number.isFinite(fE0) ? fE0 : Math.max(0, Math.floor(eA - padE));
+  const eHi = Number.isFinite(fE1) ? fE1 : Math.ceil(eB + padE);
   const tSpan = Math.max(1, tHi - tLo);
-  const eSpan = Math.max(100, eHi - eLo);
+  const eSpan = Math.max(20, eHi - eLo);
 
   const IW = W - PAD.left - PAD.right;
   const IH = height - PAD.top - PAD.bottom;
@@ -186,7 +187,7 @@ export default function EloChart({
           {yticks.map((e) => (
             <g key={`y${e}`}>
               <line x1={PAD.left} x2={W - PAD.right} y1={Y(e)} y2={Y(e)} stroke="var(--chart-grid)" strokeDasharray="3 4" strokeWidth={1} />
-              <text x={PAD.left - 8} y={Y(e) + 3} fontSize={10} fill="var(--chart-label)" textAnchor="end">
+              <text x={PAD.left - 10} y={Y(e) + 4} fontSize={12} fill="var(--ink)" textAnchor="end" fontWeight="500">
                 {Math.round(e)}
               </text>
             </g>
@@ -195,7 +196,7 @@ export default function EloChart({
           {xticks.map((t) => (
             <g key={`x${t}`}>
               <line x1={T(t)} x2={T(t)} y1={PAD.top} y2={height - PAD.bottom} stroke="var(--chart-grid)" strokeDasharray="3 4" strokeWidth={1} />
-              <text x={T(t)} y={height - PAD.bottom + 16} fontSize={10} fill="var(--chart-label)" textAnchor="middle">
+              <text x={T(t)} y={height - PAD.bottom + 18} fontSize={11} fill="var(--ink)" textAnchor="middle" fontWeight="500">
                 {labelX(t)}
               </text>
             </g>
