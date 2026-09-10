@@ -199,12 +199,29 @@ export class EngineWorker {
     });
   }
 
+  cancel(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.worker.postMessage("stop");
+    if (this.current) {
+      this.current.reject(new Error("aborted"));
+      this.current = null;
+    }
+    for (const q of this.queued) {
+      q.reject(new Error("aborted"));
+    }
+    this.queued = [];
+  }
+
   /** Recherche rapide bornée : retourne le score (centipawns, vue Blanc) et la PV. */
   async quickEval(
     fen: string,
-    opts: GoOptions = { movetime: 600 },
+    opts: GoOptions = { movetime: 350 },
   ): Promise<{ cp: number | null; pv: string[]; best: string | null } | null> {
     try {
+      this.cancel();
       await this.setPosition(fen);
       const holder: { last: EngineInfo | null } = { last: null };
       const info = await this.go(opts, (all) => {

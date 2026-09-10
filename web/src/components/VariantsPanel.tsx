@@ -27,11 +27,14 @@ export default function VariantsPanel({ fen, playerColor, engine, engineReady, o
   const [sortBy, setSortBy] = useState<"cp" | "winprob">("cp");
 
   useEffect(() => {
-    void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const controller = new AbortController();
+    void refresh(controller.signal);
+    return () => {
+      controller.abort();
+    };
   }, [fen, engineReady, engine]);
 
-  const refresh = async () => {
+  const refresh = async (signal: AbortSignal) => {
     setLoading(true);
     try {
       let legal: { uci: string; san: string; fen: string }[] = [];
@@ -48,20 +51,23 @@ export default function VariantsPanel({ fen, playerColor, engine, engineReady, o
       } catch {
         legal = [];
       }
-      if (!engine || !engineReady || legal.length === 0) {
+      if (!engine || !engineReady || legal.length === 0 || signal.aborted) {
         setBaseCp(null);
         setVariants([]);
         return;
       }
-      const base = await engine.evalFen(fen, { movetime: 250, depth: 10 });
+      const base = await engine.evalFen(fen, { movetime: 200, depth: 10 });
+      if (signal.aborted) return;
       setBaseCp(base?.cp ?? null);
       const out: Variant[] = [];
       const MAX_EVAL = 24;
       for (let i = 0; i < legal.length; i++) {
+        if (signal.aborted) return;
         const m = legal[i];
         let cp: number | null = null;
         if (i < MAX_EVAL) {
-          const r = await engine.evalFen(m.fen, { movetime: 200, depth: 9 });
+          const r = await engine.evalFen(m.fen, { movetime: 150, depth: 8 });
+          if (signal.aborted) return;
           cp = r?.cp ?? null;
         }
         out.push({
@@ -72,9 +78,9 @@ export default function VariantsPanel({ fen, playerColor, engine, engineReady, o
           winprob: cp != null ? playerWinProb({ cp, mate: null }, playerColor) : null,
         });
       }
-      setVariants(out);
+      if (!signal.aborted) setVariants(out);
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   };
 
