@@ -14,6 +14,7 @@ import {
   type Promo,
 } from "../lib/game/board";
 import type { Settings } from "../lib/game/settings";
+import type { CustomSquareStyles } from "react-chessboard/dist/chessboard/types";
 import { loadSettings } from "../lib/game/settings";
 import type { PlayerProfile } from "../lib/profile-types";
 import { useSession } from "../lib/session";
@@ -40,7 +41,6 @@ export default function Training() {
   const [selected, setSelected] = useState<Square | null>(null);
   const [pendingPromo, setPendingPromo] = useState<PendingPromo>(null);
   const [opponentReply, setOpponentReply] = useState<string | null>(null);
-  const [replyFen, setReplyFen] = useState<string | null>(null);
   const [settings] = useState<Settings>(loadSettings);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -60,7 +60,6 @@ export default function Training() {
         setSelected(null);
         setPendingPromo(null);
         setOpponentReply(null);
-        setReplyFen(null);
       })
       .catch((e) => setErr(String(e)));
   };
@@ -146,7 +145,6 @@ export default function Training() {
           if (next?.san) {
             setOpponentReply(next.san);
             if (ok && next.fen_after) {
-              setReplyFen(next.fen_after);
               setBoardFen(next.fen_after);
             }
           }
@@ -211,7 +209,6 @@ export default function Training() {
     setSelected(null);
     setPendingPromo(null);
     setOpponentReply(null);
-    setReplyFen(null);
   };
 
   const restart = () => setScore({ correct: 0, total: 0 });
