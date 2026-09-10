@@ -187,7 +187,7 @@ export default function EloChart({
           {yticks.map((e) => (
             <g key={`y${e}`}>
               <line x1={PAD.left} x2={W - PAD.right} y1={Y(e)} y2={Y(e)} stroke="var(--chart-grid)" strokeDasharray="3 4" strokeWidth={1} />
-              <text x={PAD.left - 10} y={Y(e) + 4} fontSize={12} fill="var(--ink)" textAnchor="end" fontWeight="500">
+              <text x={PAD.left - 10} y={Y(e) + 4} fontSize={12} fill="var(--color-muted)" textAnchor="end" fontWeight="500">
                 {Math.round(e)}
               </text>
             </g>
@@ -196,7 +196,7 @@ export default function EloChart({
           {xticks.map((t) => (
             <g key={`x${t}`}>
               <line x1={T(t)} x2={T(t)} y1={PAD.top} y2={height - PAD.bottom} stroke="var(--chart-grid)" strokeDasharray="3 4" strokeWidth={1} />
-              <text x={T(t)} y={height - PAD.bottom + 18} fontSize={11} fill="var(--ink)" textAnchor="middle" fontWeight="500">
+              <text x={T(t)} y={height - PAD.bottom + 18} fontSize={11} fill="var(--color-muted)" textAnchor="middle" fontWeight="500">
                 {labelX(t)}
               </text>
             </g>
