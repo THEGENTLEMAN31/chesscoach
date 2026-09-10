@@ -44,7 +44,7 @@ export default function EloChart({
   dateMax,
   eloMin,
   eloMax,
-  height = 340,
+  height = 480,
   milestones = [1200, 1400, 1600, 1800, 2000, 2200],
 }: EloChartProps) {
   const svgRef = useRef<SVGSVGElement>(null);

@@ -96,11 +96,20 @@ export default function ImportPage() {
         if (!plies.length) throw new ImportError("Partie vide.");
       }
 
-      if (!engine) throw new ImportError("Moteur local non prêt.");
+      let activeEngine = engine;
+      if (!activeEngine) {
+        let waited = 0;
+        while (!activeEngine && waited < 10000) {
+          await new Promise((r) => setTimeout(r, 200));
+          waited += 200;
+        }
+      }
+      if (!activeEngine) throw new ImportError("Moteur local non prêt (chargement en cours, réessaie dans un instant).");
+      await activeEngine.ready;
       const { analysed, accuracy, acpl, classifications } = await analysePlies(
         plies,
         metaOut.playerColor,
-        engine,
+        activeEngine,
         { movetime: 400, depth: 12 },
         setProgress,
         () => cancelled,

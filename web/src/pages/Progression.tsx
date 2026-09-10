@@ -83,15 +83,20 @@ export default function Progression() {
   };
 
   const ptsFor = (tc: string) => {
-    const pts: { date: string; elo: number }[] = [];
+    const map = new Map<string, number>();
     for (const g of games[tc] ?? []) {
       if (!g.end_time) continue;
       const elo = g.player_color === "w" ? g.white_elo : g.black_elo;
       if (elo == null) continue;
       const iso = new Date(g.end_time * 1000).toISOString();
       if (!visible(iso, elo)) continue;
-      pts.push({ date: iso, elo });
+      const dayKey = iso.slice(0, 10);
+      map.set(dayKey, elo); // Garde la dernière valeur de elo pour chaque jour (tendance lissée)
     }
+    const pts = [...map.entries()].map(([day, elo]) => ({
+      date: `${day}T12:00:00Z`,
+      elo,
+    }));
     pts.sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
     return pts;
   };
