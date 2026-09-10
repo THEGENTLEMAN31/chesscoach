@@ -279,6 +279,20 @@ export default function GameReview() {
       return localBest[quizPly.ply];
     }
   }, [quizPly, localBest]);
+
+  useEffect(() => {
+    if (!revealed || !settings.autoNextQuiz || mode !== "quiz") return;
+    const t = setTimeout(() => {
+      setQuizIndex((i) => (i + 1 >= quizPlies.length ? 0 : i + 1));
+      setProposed(null);
+      setRevealed(false);
+      setBoardFen(null);
+      setClickSquare(null);
+      setPendingPromo(null);
+    }, 1600);
+    return () => clearTimeout(t);
+  }, [revealed, settings.autoNextQuiz, mode, quizIndex, quizPlies.length]);
+
   if (error) {
     return (
       <div className="flex flex-col gap-4">
@@ -462,14 +476,6 @@ export default function GameReview() {
     revealed && proposed
       ? proposed === (quizPly?.best_move ?? localBest[quizPly.ply] ?? null)
       : null;
-
-  useEffect(() => {
-    if (revealed && settings.autoNextQuiz && mode === "quiz") {
-      const t = setTimeout(nextQuiz, 1600);
-      return () => clearTimeout(t);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [revealed, settings.autoNextQuiz, quizIndex]);
 
   const back = (
     <button
