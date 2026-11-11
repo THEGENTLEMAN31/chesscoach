@@ -34,7 +34,11 @@ def _is_transient(exc: BaseException) -> bool:
 
 class ChessComClient:
     def __init__(self, timeout: float = 20.0, max_attempts: int = 3) -> None:
-        self._client = httpx.AsyncClient(base_url=BASE, timeout=timeout)
+        # follow_redirects : chess.com renvoie un 301 vers le pseudo canonique
+        # (casse) — sans ça, le 3xx fuit vers l'appelant (faux « service indisponible »).
+        self._client = httpx.AsyncClient(
+            base_url=BASE, timeout=timeout, follow_redirects=True
+        )
         self._max_attempts = max_attempts
 
     async def aclose(self) -> None:

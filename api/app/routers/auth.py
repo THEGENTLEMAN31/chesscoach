@@ -53,7 +53,7 @@ async def register(
     if not pseudo:
         raise HTTPException(400, "pseudo chess.com requis")
     try:
-        await chesscom.get_player(pseudo)
+        profile = await chesscom.get_player(pseudo)
     except ChessComError as exc:
         raise HTTPException(
             400, f"Ce pseudo chess.com n'existe pas. Vérifie l'orthographe ({exc})."
@@ -62,7 +62,12 @@ async def register(
         logger.warning("Vérification chess.com indisponible : %s", exc)
         raise HTTPException(503, "service chess.com indisponible, réessayez plus tard") from exc
 
-    user_create.chesscom_username = pseudo
+    # Pseudo canonique chess.com (casse retournée par la PubAPI) : l'identité
+    # stockée est la même quel que soit le format tapé → un seul compte par joueur.
+    # La sync post-inscription utilise ce même pseudo canonique : les endpoints
+    # scopient par chesscom_username, la data doit donc être sous la même casse.
+    user_create.chesscom_username = profile.get("username", pseudo)
+    pseudo = user_create.chesscom_username
     try:
         user = await user_manager.create(user_create, safe=True, request=request)
     except exceptions.UserAlreadyExists as exc:
