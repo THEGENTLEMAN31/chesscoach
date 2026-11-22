@@ -25,6 +25,7 @@ export default function EvalCurve({
   const data = useMemo(() => {
     let prevWp: number | null = null;
     return game.plies.map((p) => {
+      // Les évals stockées par le serveur sont normalisées en perspective Blancs.
       const raw = playerWinProb(p.eval_after, game.player_color);
       const wp = raw ?? prevWp ?? 50;
       prevWp = wp;

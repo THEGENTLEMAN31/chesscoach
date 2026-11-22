@@ -1,14 +1,12 @@
 import { useEffect, useState } from "react";
 import { Chess, type Square } from "chess.js";
-import type { EngineWorker } from "../lib/engine/engine";
-import { playerWinProb } from "../lib/game/eval";
+import { uciScore, stmOf, toWhite, type EngineWorker } from "../lib/engine/engine";
 
 interface Variant {
   uci: string;
   san: string;
   fen: string;
   cp: number | null;
-  winprob: number | null;
 }
 
 interface VariantsPanelProps {
@@ -19,76 +17,61 @@ interface VariantsPanelProps {
   onPlay: (uci: string, san: string, fen: string) => void;
 }
 
-/** Liste les coups légaux de la position et leur évaluation moteur. */
-export default function VariantsPanel({ fen, playerColor, engine, engineReady, onPlay }: VariantsPanelProps) {
-  const [baseCp, setBaseCp] = useState<number | null>(null);
+/** Meilleurs coups de la position (MultiPV), avec leur évaluation. */
+export default function VariantsPanel({ fen, engine, engineReady, onPlay }: VariantsPanelProps) {
   const [variants, setVariants] = useState<Variant[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<"cp" | "winprob">("cp");
 
   useEffect(() => {
-    const controller = new AbortController();
-    void refresh(controller.signal);
-    return () => {
-      controller.abort();
-    };
-  }, [fen, engineReady, engine]);
-
-  const refresh = async (signal: AbortSignal) => {
-    setLoading(true);
-    try {
-      let legal: { uci: string; san: string; fen: string }[] = [];
-      try {
-        const b = new Chess(fen);
-        legal = b.moves({ verbose: true }).map((m) => {
-          const played = tryAll(b, m);
-          return {
-            uci: m.from + m.to + (m.promotion ?? ""),
-            san: m.san,
-            fen: played ?? b.fen(),
-          };
-        });
-      } catch {
-        legal = [];
-      }
-      if (!engine || !engineReady || legal.length === 0 || signal.aborted) {
-        setBaseCp(null);
+    let cancelled = false;
+    async function run() {
+      if (!engine || !engineReady) {
         setVariants([]);
         return;
       }
-      const base = await engine.evalFen(fen, { movetime: 200, depth: 10 });
-      if (signal.aborted) return;
-      setBaseCp(base?.cp ?? null);
-      const out: Variant[] = [];
-      const MAX_EVAL = 24;
-      for (let i = 0; i < legal.length; i++) {
-        if (signal.aborted) return;
-        const m = legal[i];
-        let cp: number | null = null;
-        if (i < MAX_EVAL) {
-          const r = await engine.evalFen(m.fen, { movetime: 150, depth: 8 });
-          if (signal.aborted) return;
-          cp = r?.cp ?? null;
+      setLoading(true);
+      try {
+        const res = await engine.analyseMultiPv(fen, { depth: 12, movetime: 600 }, 6);
+        if (cancelled || !res) return;
+        const stm = stmOf(fen);
+        const rows: Variant[] = [];
+        for (const line of res.lines) {
+          const uci = line.pv[0];
+          if (!uci) continue;
+          const c = new Chess(fen);
+          let san = uci;
+          let fenAfter = fen;
+          try {
+            const mv = c.move({
+              from: uci.slice(0, 2) as Square,
+              to: uci.slice(2, 4) as Square,
+              promotion: uci.length >= 5 ? (uci[4] as "q" | "r" | "n" | "b") : undefined,
+            });
+            if (mv) {
+              san = mv.san;
+              fenAfter = c.fen();
+            }
+          } catch {
+            /* coup invalide, on garde l'uci */
+          }
+          rows.push({ uci, san, fen: fenAfter, cp: toWhite(uciScore(line), stm) });
         }
-        out.push({
-          uci: m.uci,
-          san: m.san,
-          fen: m.fen,
-          cp,
-          winprob: cp != null ? playerWinProb({ cp, mate: null }, playerColor) : null,
+        // trier par avantage pour le camp au trait (jaugé en perspective Blancs)
+        rows.sort((a, b) => {
+          const av = a.cp ?? -1e9;
+          const bv = b.cp ?? -1e9;
+          return stm === "w" ? bv - av : av - bv;
         });
+        if (!cancelled) setVariants(rows.slice(0, 6));
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      if (!signal.aborted) setVariants(out);
-    } finally {
-      if (!signal.aborted) setLoading(false);
     }
-  };
-
-  const sorted = [...variants].sort((a, b) => {
-    const av = sortBy === "cp" ? (a.cp ?? -1e9) : (a.winprob ?? -1e9);
-    const bv = sortBy === "cp" ? (b.cp ?? -1e9) : (b.winprob ?? -1e9);
-    return bv - av;
-  });
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [fen, engine, engineReady]);
 
   if (!engineReady || !engine) {
     return <p className="text-xs text-muted">Moteur indisponible.</p>;
@@ -97,78 +80,38 @@ export default function VariantsPanel({ fen, playerColor, engine, engineReady, o
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-muted">Variantes ({sorted.length})</span>
-        <div className="flex items-center gap-1 rounded-md border border-line bg-surface-2 p-0.5">
-          {(["cp", "winprob"] as const).map((k) => (
-            <button
-              key={k}
-              onClick={() => setSortBy(k)}
-              className={`rounded px-2 py-0.5 text-[10px] ${sortBy === k ? "bg-accent text-accent-ink" : "text-muted"}`}
-            >
-              {k === "cp" ? "Éval" : "Proba"}
-            </button>
-          ))}
-        </div>
+        <span className="text-xs font-semibold text-muted">Meilleurs coups ({variants.length})</span>
       </div>
-      {loading && sorted.length === 0 ? (
-        <p className="text-xs text-muted">Calcul des variantes…</p>
-      ) : sorted.length === 0 ? (
-        <p className="text-xs text-muted">Aucun coup légal.</p>
+      {loading && variants.length === 0 ? (
+        <p className="text-xs text-muted">Calcul des meilleurs coups…</p>
+      ) : variants.length === 0 ? (
+        <p className="text-xs text-muted">Aucun coup.</p>
       ) : (
-        <ul className="max-h-72 flex flex-col gap-0.5 overflow-y-auto">
-          {sorted.map((v, i) => {
-            const delta = v.cp != null && baseCp != null ? v.cp - baseCp : null;
-            const isBest = i === 0 && sorted.length > 1;
-            return (
-              <li key={v.uci}>
-                <button
-                  onClick={() => onPlay(v.uci, v.san, v.fen)}
-                  className={`flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1 text-left transition-colors hover:bg-surface-3 ${
-                    isBest
-                      ? "border-accent/40 bg-accent/5"
-                      : "border-line bg-surface-2/60"
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <span className="truncate text-xs text-ink">{v.san}</span>
-                    {isBest && (
-                      <span className="ml-1.5 rounded bg-accent/15 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-accent">
-                        meilleur
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <span className="text-[10px] tabular-nums text-muted">
-                      {v.cp != null ? `${v.cp >= 0 ? "+" : ""}${(v.cp / 100).toFixed(1)}` : "—"}
+        <ul className="flex flex-col gap-0.5">
+          {variants.map((v, i) => (
+            <li key={v.uci}>
+              <button
+                onClick={() => onPlay(v.uci, v.san, v.fen)}
+                className={`flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1 text-left transition-colors hover:bg-surface-3 ${
+                  i === 0 ? "border-accent/40 bg-accent/5" : "border-line bg-surface-2/60"
+                }`}
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="truncate text-xs text-ink">{v.san}</span>
+                  {i === 0 && (
+                    <span className="ml-1.5 rounded bg-accent/15 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-accent">
+                      meilleur
                     </span>
-                    {delta != null && (
-                      <span
-                        className={`text-[10px] tabular-nums ${
-                          delta >= 0 ? "text-accent" : "text-eval-down"
-                        }`}
-                      >
-                        {delta >= 0 ? "+" : ""}
-                        {(delta / 100).toFixed(1)}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              </li>
-            );
-          })}
+                  )}
+                </div>
+                <span className="shrink-0 text-xs tabular-nums text-muted">
+                  {v.cp != null ? `${v.cp >= 0 ? "+" : ""}${(v.cp / 100).toFixed(1)}` : "—"}
+                </span>
+              </button>
+            </li>
+          ))}
         </ul>
       )}
     </div>
   );
-}
-
-/** Petit helper : rejouer le coup sur une copie pour obtenir la FEN. */
-function tryAll(b: Chess, m: { from: Square; to: Square; promotion?: string }): string | null {
-  try {
-    const c = new Chess(b.fen());
-    const mv = c.move({ from: m.from, to: m.to, promotion: m.promotion as "q" | "r" | "n" | "b" | undefined });
-    return mv ? c.fen() : null;
-  } catch {
-    return null;
-  }
 }

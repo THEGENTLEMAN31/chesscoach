@@ -184,7 +184,14 @@ export default function GameReview() {
     mode === "engine" ? `e:${position}` : `q:${quizPly?.ply ?? ""}:${position}`;
 
   useEffect(() => {
-    if (!engineState.ready || mode !== "engine") return;
+    if (mode !== "engine") return;
+    // Navigation normale : on utilise les évals stockées (fiables, instantanées).
+    // Le moteur live ne tourne qu'en exploration libre pour éviter tout conflit.
+    if (boardFen === null) {
+      setLive(null);
+      return;
+    }
+    if (!engineState.ready) return;
     const cached = liveCache.current.get(liveKey);
     if (cached) {
       setLive(cached);
@@ -218,7 +225,7 @@ export default function GameReview() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [liveKey, engineState.ready, mode, position, analyse]);
+  }, [liveKey, engineState.ready, mode, position, analyse, boardFen]);
 
   useEffect(() => {
     if (mode !== "quiz" || !revealed || !quizPly || quizPly.best_move) return;
@@ -608,14 +615,25 @@ export default function GameReview() {
 {mode === "engine" && (
                 <div className="shrink-0 self-stretch flex">
                   {(() => {
-                    const evalPt = live?.cp != null ? { cp: live.cp, mate: null } : (ply?.eval_after ?? null);
-                    if (!evalPt) return null;
-                    const label = evalPt.mate != null
-                      ? `M${evalPt.mate}`
-                      : evalPt.cp != null
-                        ? `${evalPt.cp >= 0 ? "+" : ""}${(evalPt.cp / 100).toFixed(1)}`
+                    // Deux sources de vérité, deux conventions :
+                    // - live (WASM) : score perspective du camp au trait -> convertir en Blancs.
+                    // - éval stockée : déjà normalisée perspective Blancs.
+                    let cpWhite: number | null = null;
+                    let mateWhite: number | null = null;
+                    if (live?.cp != null) {
+                      cpWhite = plyColor === "w" ? live.cp : -live.cp;
+                    } else if (ply?.eval_after) {
+                      cpWhite = ply.eval_after.cp;
+                      mateWhite = ply.eval_after.mate;
+                    } else {
+                      return null;
+                    }
+                    const label = mateWhite != null
+                      ? mateWhite > 0 ? `M${mateWhite}` : `-M${-mateWhite}`
+                      : cpWhite != null
+                        ? `${cpWhite >= 0 ? "+" : ""}${(cpWhite / 100).toFixed(1)}`
                         : "…";
-                    return <EvalBar cp={evalPt.cp ?? null} label={label} />;
+                    return <EvalBar cp={cpWhite} label={label} />;
                   })()}
                 </div>
               )}
