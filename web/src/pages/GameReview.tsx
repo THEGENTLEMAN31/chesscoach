@@ -26,6 +26,12 @@ import { ChevronRightIcon } from "../components/icons";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
+function evalLabel(cp: number | null, mate: number | null): string {
+  if (mate != null) return mate > 0 ? `M${mate}` : `-M${-mate}`;
+  if (cp != null) return `${cp >= 0 ? "+" : ""}${(cp / 100).toFixed(1)}`;
+  return "…";
+}
+
 const CLASS_ORDER = ["blunder", "mistake", "inaccuracy", "good", "best"];
 
 type Mode = "engine" | "quiz";
@@ -61,6 +67,13 @@ export default function GameReview() {
   const [settings] = useState<Settings>(loadSettings);
   const { engine, state: engineState, error: engineError, analyse } = useAnalyse();
   const [live, setLive] = useState<LiveEval | null>(null);
+  // Dernière évaluation stable (perspective Blancs) : conservée pendant l'analyse
+  // en exploration pour éviter tout état neutre ou valeur incohérente.
+  const [heldEval, setHeldEval] = useState<{
+    cp: number | null;
+    mate: number | null;
+    label: string;
+  } | null>(null);
   const [localBest, setLocalBest] = useState<Record<number, string>>({});
   const liveCache = useRef(new Map<string, LiveEval>());
   const localBestCache = useRef(new Map<number, string>());
@@ -226,6 +239,22 @@ export default function GameReview() {
       clearTimeout(t);
     };
   }, [liveKey, engineState.ready, mode, position, analyse, boardFen]);
+
+  // Navigation : l'éval stockée de la partie sert de valeur stable de référence.
+  useEffect(() => {
+    if (boardFen !== null) return;
+    const e = ply?.eval_after;
+    if (!e) return;
+    setHeldEval({ cp: e.cp, mate: e.mate, label: evalLabel(e.cp, e.mate) });
+  }, [boardFen, ply]);
+
+  // Exploration : dès que le WASM a l'éval de la position affichée, on la mémorise.
+  useEffect(() => {
+    if (boardFen === null) return;
+    if (live?.key !== liveKey) return;
+    const cpWhite = live.cp != null ? (plyColor === "w" ? live.cp : -live.cp) : null;
+    setHeldEval({ cp: cpWhite, mate: null, label: evalLabel(cpWhite, null) });
+  }, [boardFen, live, liveKey, plyColor]);
 
   useEffect(() => {
     if (mode !== "quiz" || !revealed || !quizPly || quizPly.best_move) return;
@@ -615,32 +644,24 @@ export default function GameReview() {
 {mode === "engine" && (
                 <div className="shrink-0 self-stretch flex">
                   {(() => {
-                    // Deux sources de vérité, deux conventions :
-                    // - live (WASM) : score perspective du camp au trait -> convertir en Blancs.
-                    // - éval stockée : déjà normalisée perspective Blancs.
-                    // En exploration (boardFen renseigné), l'éval stockée ne correspond
-                    // pas à la position affichée : on n'affiche que le live de CETTE position.
-                    let cpWhite: number | null = null;
-                    let mateWhite: number | null = null;
-                    if (boardFen !== null) {
-                      if (live?.key !== liveKey) {
-                        return <EvalBar cp={null} label="…" />;
-                      }
-                      cpWhite = live?.cp != null
+                    // Deux sources de vérité :
+                    // - navigation : éval stockée (perspective Blancs), instantanée.
+                    // - exploration : live WASM (perspective du trait -> converti Blancs).
+                    // Pendant l'analyse d'une position explorée, on conserve la dernière
+                    // éval stable (heldEval) au lieu d'un état neutre ou d'une valeur fausse.
+                    if (boardFen === null) {
+                      const e = ply?.eval_after;
+                      if (!e) return null;
+                      return <EvalBar cp={e.cp} label={evalLabel(e.cp, e.mate)} />;
+                    }
+                    if (live?.key === liveKey) {
+                      const cpWhite = live.cp != null
                         ? (plyColor === "w" ? live.cp : -live.cp)
                         : null;
-                    } else if (ply?.eval_after) {
-                      cpWhite = ply.eval_after.cp;
-                      mateWhite = ply.eval_after.mate;
-                    } else {
-                      return null;
+                      return <EvalBar cp={cpWhite} label={evalLabel(cpWhite, null)} />;
                     }
-                    const label = mateWhite != null
-                      ? mateWhite > 0 ? `M${mateWhite}` : `-M${-mateWhite}`
-                      : cpWhite != null
-                        ? `${cpWhite >= 0 ? "+" : ""}${(cpWhite / 100).toFixed(1)}`
-                        : "…";
-                    return <EvalBar cp={cpWhite} label={label} />;
+                    if (!heldEval) return <EvalBar cp={null} label="…" />;
+                    return <EvalBar cp={heldEval.cp} label={heldEval.label} />;
                   })()}
                 </div>
               )}
