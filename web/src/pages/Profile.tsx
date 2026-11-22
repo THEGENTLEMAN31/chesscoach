@@ -11,7 +11,6 @@ export default function Profile() {
   const { user } = useSession();
   const { push } = useToast();
   const [timeClass, setTimeClass] = useState("global");
-  const [recomputing, setRecomputing] = useState(false);
   const [objRapid, setObjRapid] = useState("");
   const [objBlitz, setObjBlitz] = useState("");
   const [savingObj, setSavingObj] = useState(false);
@@ -34,17 +33,7 @@ export default function Profile() {
     null;
   const gap = profile?.objective.gap ?? null;
 
-  const recompute = async () => {
-    setRecomputing(true);
-    try {
-      await api.profileRecompute(timeClass);
-      await profileQ.refetch();
-    } catch {
-      /* message via UI */
-    } finally {
-      setRecomputing(false);
-    }
-  };
+  const targets = objectivesQ.data?.targets ?? {};
 
   const saveObjectives = async () => {
     setSavingObj(true);
@@ -61,8 +50,6 @@ export default function Profile() {
     }
   };
 
-  const targets = objectivesQ.data?.targets ?? {};
-
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -70,9 +57,6 @@ export default function Profile() {
           <h1 className="text-xl font-semibold tracking-tight">Profil joueur</h1>
           <p className="mt-0.5 text-sm text-muted">{user?.chesscom_username}</p>
         </div>
-        <Button variant="ghost" onClick={() => void recompute()} disabled={recomputing} className="px-3 py-1.5 text-xs">
-          {recomputing ? "Calcul…" : "Recalculer"}
-        </Button>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -102,20 +86,18 @@ export default function Profile() {
             Rapide
             <input
               type="number"
-              placeholder={String(targets.rapid ?? 2000)}
-              value={objRapid}
+              value={objRapid || String(targets.rapid ?? 2000)}
               onChange={(e) => setObjRapid(e.target.value)}
-              className="rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink placeholder:text-muted/50"
+              className="rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink"
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted">
             Blitz
             <input
               type="number"
-              placeholder={String(targets.blitz ?? 1800)}
-              value={objBlitz}
+              value={objBlitz || String(targets.blitz ?? 1800)}
               onChange={(e) => setObjBlitz(e.target.value)}
-              className="rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink placeholder:text-muted/50"
+              className="rounded-md border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink"
             />
           </label>
         </div>

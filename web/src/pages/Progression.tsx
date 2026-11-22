@@ -1,140 +1,92 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import EloChart from "../components/EloChart";
-import { Button, Card, Spinner } from "../components/ui";
+import { Card, Spinner } from "../components/ui";
 import { api } from "../lib/api";
 import { TIME_CLASS_LABEL } from "../lib/constants";
 import type { GameOut } from "../lib/types";
 import type { PlayerProfile } from "../lib/profile-types";
+import { buildEloPoints } from "../lib/game/elo-series";
 
-interface ProfileHistory {
-  dates: string[];
-  elo: (number | null)[];
-  games: number[];
-}
+type Tab = "rapid" | "blitz" | "both";
 
-const TABS = [
-  { key: "global", label: "Global" },
+const TABS: { key: Tab; label: string }[] = [
   { key: "rapid", label: "Rapide" },
   { key: "blitz", label: "Blitz" },
+  { key: "both", label: "Comparer" },
 ];
 
-const PERIODS: { value: number; label: string }[] = [
+const WINDOWS: { value: number; label: string }[] = [
+  { value: 20, label: "20 parties" },
+  { value: 100, label: "100 parties" },
   { value: 0, label: "Tout" },
-  { value: 30, label: "30 j" },
-  { value: 90, label: "90 j" },
-  { value: 365, label: "1 an" },
 ];
 
 export default function Progression() {
+  const navigate = useNavigate();
   const [profiles, setProfiles] = useState<Record<string, PlayerProfile> | null>(null);
-  const [history, setHistory] = useState<Record<string, ProfileHistory>>({});
   const [games, setGames] = useState<Record<string, GameOut[]>>({});
-  const [tab, setTab] = useState("global");
-  const [period, setPeriod] = useState(0);
-  const [err, setErr] = useState<string | null>(null);
+  const [objectives, setObjectives] = useState<Record<string, number>>({});
+  const [history, setHistory] = useState<{ dates: string[]; elo: (number | null)[]; games: number[] } | null>(null);
+  const [tab, setTab] = useState<Tab>("rapid");
+  const [windowSize, setWindowSize] = useState(100);
+  const [smooth, setSmooth] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [dateMin, setDateMin] = useState("");
-  const [dateMax, setDateMax] = useState("");
-  const [eloMin, setEloMin] = useState<number | null>(null);
-  const [eloMax, setEloMax] = useState<number | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    api
-      .profileAll()
-      .then((res) => {
+    Promise.all([
+      api.profileAll(),
+      api.objectives(),
+      api.profileHistory("global").catch(() => null),
+      api.games({ time_class: "rapid", limit: "500" }).catch(() => ({ items: [] })),
+      api.games({ time_class: "blitz", limit: "500" }).catch(() => ({ items: [] })),
+    ])
+      .then(([all, obj, hist, rapid, blitz]) => {
+        if (cancelled) return;
         const p: Record<string, PlayerProfile> = {};
-        for (const [k, v] of Object.entries(res.profiles)) {
-          p[k] = v as unknown as PlayerProfile;
-        }
+        for (const [k, v] of Object.entries(all.profiles)) p[k] = v as unknown as PlayerProfile;
         setProfiles(p);
+        setObjectives((obj as unknown as { targets?: Record<string, number> })?.targets ?? {});
+        setHistory((hist as unknown as typeof history) ?? null);
+        setGames({ rapid: rapid.items, blitz: blitz.items });
       })
-      .catch((e) => setErr(String(e)))
-      .finally(() => setLoading(false));
-    for (const t of TABS) {
-      api
-        .profileHistory(t.key)
-        .then((h) => setHistory((prev) => ({ ...prev, [t.key]: h as unknown as ProfileHistory })))
-        .catch(() => {});
-    }
-    for (const tc of ["rapid", "blitz"]) {
-      api
-        .games({ time_class: tc, limit: "500" })
-        .then((g) => setGames((prev) => ({ ...prev, [tc]: g.items })))
-        .catch(() => {});
-    }
+      .catch((e) => !cancelled && setErr(String(e)))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const profile = profiles?.[tab] ?? profiles?.global ?? null;
-  const hist = history[tab] ?? null;
+  const rapidPts = useMemo(() => buildEloPoints(games.rapid ?? [], windowSize), [games.rapid, windowSize]);
+  const blitzPts = useMemo(() => buildEloPoints(games.blitz ?? [], windowSize), [games.blitz, windowSize]);
 
-  const cutoffMs = period > 0 ? Date.now() - period * 24 * 3600 * 1000 : 0;
+  const series = useMemo(() => {
+    const mk = (id: "rapid" | "blitz", pts: ReturnType<typeof buildEloPoints>, color: string) => ({
+      id,
+      label: TIME_CLASS_LABEL[id] ?? id,
+      color,
+      points: pts,
+    });
+    if (tab === "rapid") return [mk("rapid", rapidPts, "var(--chart-1)")];
+    if (tab === "blitz") return [mk("blitz", blitzPts, "var(--chart-2)")];
+    return [mk("rapid", rapidPts, "var(--chart-1)"), mk("blitz", blitzPts, "var(--chart-2)")];
+  }, [tab, rapidPts, blitzPts]);
 
-  // Courbe par partie : on utilise les elo réels de chaque partie analysée.
-  const visible = (iso: string, elo: number | null) => {
-    if (elo == null) return false;
-    if (cutoffMs > 0 && Date.parse(iso) < cutoffMs) return false;
-    if (dateMin && Date.parse(iso) < Date.parse(dateMin)) return false;
-    if (dateMax && Date.parse(iso) > Date.parse(dateMax) + 86_399_999) return false;
-    if (eloMin != null && elo < eloMin) return false;
-    if (eloMax != null && elo > eloMax) return false;
-    return true;
-  };
+  const headlinePts = tab === "blitz" ? blitzPts : rapidPts;
+  const headlineClass = tab === "blitz" ? "blitz" : "rapid";
+  const current = headlinePts.length ? headlinePts[headlinePts.length - 1].elo : null;
+  const delta =
+    headlinePts.length > 1 ? Math.round(headlinePts[headlinePts.length - 1].elo - headlinePts[0].elo) : null;
+  const record = headlinePts.length ? Math.max(...headlinePts.map((p) => p.elo)) : null;
+  const target = tab === "both" ? null : objectives[headlineClass] ?? null;
 
-  const ptsFor = (tc: string) => {
-    const map = new Map<string, number>();
-    for (const g of games[tc] ?? []) {
-      if (!g.end_time) continue;
-      const elo = g.player_color === "w" ? g.white_elo : g.black_elo;
-      if (elo == null) continue;
-      const iso = new Date(g.end_time * 1000).toISOString();
-      if (!visible(iso, elo)) continue;
-      const dayKey = iso.slice(0, 10);
-      map.set(dayKey, elo); // Garde la dernière valeur de elo pour chaque jour (tendance lissée)
-    }
-    const pts = [...map.entries()].map(([day, elo]) => ({
-      date: `${day}T12:00:00Z`,
-      elo,
-    }));
-    pts.sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
-    return pts;
-  };
+  const profile = profiles?.global ?? null;
+  const tabCount = profiles?.[tab === "both" ? "global" : tab]?.games.n ?? null;
 
-  const eloData = useMemo(() => {
-    const tcs = tab === "global" ? ["rapid", "blitz"] : [tab];
-    const pts = tcs.flatMap((tc) => ptsFor(tc));
-    pts.sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
-    return pts;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, games, period, dateMin, dateMax, eloMin, eloMax]);
-
-  // Courbes affichées : rapide + blitz superposées sur « Toutes cadences ».
-  const eloSeries = useMemo(() => {
-    const mk = (tc: string, label: string, color: string) => {
-      const pts = ptsFor(tc);
-      if (pts.length > 1)
-        return { label, color, dates: pts.map((p) => p.date), elo: pts.map((p) => p.elo) };
-      return null;
-    };
-    if (tab === "global") {
-      const out: { label: string; color: string; dates: string[]; elo: number[] }[] = [];
-      const r = mk("rapid", "Rapide", "#6fa8dc");
-      if (r) out.push(r);
-      const b = mk("blitz", "Blitz", "#d9a441");
-      if (b) out.push(b);
-      if (out.length === 0 && eloData.length > 1)
-        out.push({ label: "Global", color: "#6fa8dc", dates: eloData.map((p) => p.date), elo: eloData.map((p) => p.elo) });
-      return out;
-    }
-    const label = TIME_CLASS_LABEL[tab] ?? tab;
-    const one = mk(tab, label, tab === "rapid" ? "#6fa8dc" : "#d9a441");
-    if (one) return [one];
-    return eloData.length > 1
-      ? [{ label, color: "#6fa8dc", dates: eloData.map((p) => p.date), elo: eloData.map((p) => p.elo) }]
-      : [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, games, eloData, period, dateMin, dateMax, eloMin, eloMax]);
+  const onSelectPoint = (p: { gameId: number }) => navigate(`/games/${p.gameId}`);
 
   if (err) {
     return (
@@ -146,132 +98,122 @@ export default function Progression() {
       </div>
     );
   }
-  if (loading || !profiles || !profile) {
-    return (
-      <div className="flex flex-col gap-4">
-        <h1 className="text-xl font-semibold tracking-tight">Progression</h1>
-        <div className="flex justify-center py-16">
-          <Spinner className="h-5 w-5 text-muted" />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Progression</h1>
         <p className="mt-0.5 text-sm text-muted">
-          Courbes d'elo et tendances sur tes parties analysées.
+          Ta trajectoire par partie, sans trous d'inactivité. Survole une partie pour le détail.
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {TABS.map((t) => {
-          const g = profiles[t.key];
-          const n = g ? g.games.n : 0;
-          return (
+      {/* toolbar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-1">
+          {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
-                tab === t.key
-                  ? "border-accent bg-accent/10 text-accent"
-                  : "border-line text-muted hover:text-ink"
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                tab === t.key ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"
               }`}
             >
-              <span className="capitalize">{TIME_CLASS_LABEL[t.key] ?? t.label}</span>{" "}
-              <span className="text-muted tabular-nums">({n} parties)</span>
+              {t.label}
             </button>
-          );
-        })}
+          ))}
+        </div>
+
+        <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-1">
+          {WINDOWS.map((w) => (
+            <button
+              key={w.value}
+              onClick={() => setWindowSize(w.value)}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                windowSize === w.value ? "bg-surface-3 text-ink" : "text-muted hover:text-ink"
+              }`}
+            >
+              {w.label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={() => setSmooth((s) => !s)}
+          aria-pressed={smooth}
+          className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+            smooth ? "border-accent/40 text-accent" : "border-line text-muted hover:text-ink"
+          }`}
+        >
+          {smooth ? "Lissé" : "Brut"}
+        </button>
+
+        {tabCount != null && (
+          <span className="ml-auto text-xs text-muted tabular-nums">{tabCount} parties analysées</span>
+        )}
+      </div>
+
+      {/* headline metrics */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-xs text-muted">{tab === "both" ? "Rapide" : TIME_CLASS_LABEL[headlineClass]}</span>
+          <span className="text-2xl font-bold tracking-tight tabular-nums">{current ?? "—"}</span>
+        </div>
+        {delta != null && (
+          <span className={`text-sm font-medium ${delta >= 0 ? "text-eval-up" : "text-eval-down"}`}>
+            {delta >= 0 ? "↗ +" : "↘ "}
+            {delta} sur {headlinePts.length} parties
+          </span>
+        )}
+        {record != null && (
+          <span className="text-xs text-muted">
+            record <b className="text-ink tabular-nums">{record}</b>
+          </span>
+        )}
+        {target != null && (
+          <Link to="/profile" className="text-xs text-muted hover:text-ink">
+            objectif <b className="text-accent tabular-nums">{target}</b>
+          </Link>
+        )}
       </div>
 
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold tracking-tight">Courbe Elo</h2>
-          <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-1">
-            {PERIODS.map((p) => (
-              <button
-                key={p.value}
-                onClick={() => setPeriod(p.value)}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  period === p.value ? "bg-surface-3 text-ink" : "text-muted hover:text-ink"
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+          <span className="text-[11px] text-subtle">
+            {windowSize === 0 ? "tout l'historique" : `${windowSize} dernières parties`}
+            {smooth ? " · moyenne glissante" : " · brut"}
+          </span>
         </div>
-        {/* filtres période + plage elo (repliables) */}
-        <div className="mt-2">
-          <button
-            onClick={() => setFiltersOpen((o) => !o)}
-            className="inline-flex items-center gap-1 text-xs font-medium text-muted transition-colors hover:text-ink"
-            aria-expanded={filtersOpen}
-          >
-            Filtres
-            <svg
-              className={`h-3.5 w-3.5 transition-transform ${filtersOpen ? "rotate-180" : ""}`}
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              aria-hidden
-            >
-              <path
-                fillRule="evenodd"
-                d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-                clipRule="evenodd"
-              />
-            </svg>
-            {(dateMin || dateMax || eloMin != null || eloMax != null) && (
-              <span className="rounded bg-accent/15 px-1 py-px text-[10px] font-semibold text-accent">
-                actifs
-              </span>
-            )}
-          </button>
-          {filtersOpen && (
-            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <label className="flex flex-col gap-0.5 text-[10px] text-muted">
-                Du
-                <input type="date" value={dateMin} onChange={(e) => setDateMin(e.target.value)} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
-              </label>
-              <label className="flex flex-col gap-0.5 text-[10px] text-muted">
-                Au
-                <input type="date" value={dateMax} onChange={(e) => setDateMax(e.target.value)} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
-              </label>
-              <label className="flex flex-col gap-0.5 text-[10px] text-muted">
-                Elo min
-                <input type="number" value={eloMin ?? ""} onChange={(e) => setEloMin(e.target.value === "" ? null : Number(e.target.value))} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
-              </label>
-              <label className="flex flex-col gap-0.5 text-[10px] text-muted">
-                Elo max
-                <input type="number" value={eloMax ?? ""} onChange={(e) => setEloMax(e.target.value === "" ? null : Number(e.target.value))} className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink" />
-              </label>
+        <div className="mt-3">
+          {loading ? (
+            <div className="flex h-56 items-center justify-center">
+              <Spinner className="h-5 w-5 text-muted" />
             </div>
+          ) : (
+            <EloChart
+              series={series}
+              variant="analysis"
+              height={380}
+              smooth={smooth}
+              smoothWindow={10}
+              target={target}
+              onSelectPoint={onSelectPoint}
+            />
           )}
         </div>
-
-<div className="mt-4">
-              <EloChart
-                  series={eloSeries}
-                  dateMin={dateMin || null}
-                  dateMax={dateMax || null}
-                  eloMin={eloMin}
-                  eloMax={eloMax}
-                  height={400}
-                />
-            </div>
-        <p className="mt-3 text-xs text-muted">
-          Tendance : <b className="text-ink">{profile.progress.elo_trend ?? "—"}</b> elo · Précision :{" "}
-          <b className="text-ink">{profile.progress.accuracy_trend ?? "—"}</b> pts
-        </p>
       </Card>
+
+      {tab === "both" && (
+        <p className="text-[11px] text-subtle">
+          Chaque courbe suit sa propre n-ième partie (Rapide et Blitz sont des classements séparés).
+        </p>
+      )}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card>
           <h2 className="text-sm font-semibold tracking-tight">Ce qui s'améliore (30 jours)</h2>
-          {profile.trends.improving.length > 0 ? (
+          {profile && profile.trends.improving.length > 0 ? (
             <ul className="mt-2 flex flex-col gap-1.5">
               {profile.trends.improving.map((t) => (
                 <li key={t.key} className="text-sm">
@@ -288,8 +230,8 @@ export default function Progression() {
           )}
         </Card>
         <Card>
-          <h2 className="text-sm font-semibold tracking-tight">Ce qui se dégrade (30 jours)</h2>
-          {profile.trends.worsening.length > 0 ? (
+          <h2 className="text-sm font-semibold tracking-tight">À surveiller (30 jours)</h2>
+          {profile && profile.trends.worsening.length > 0 ? (
             <ul className="mt-2 flex flex-col gap-1.5">
               {profile.trends.worsening.map((t) => (
                 <li key={t.key} className="text-sm">
@@ -298,6 +240,12 @@ export default function Progression() {
                   <span className="text-xs text-muted">
                     ({t.recent_share}% récent vs {t.overall_share}% global)
                   </span>
+                  <Link
+                    to={`/training?concept=${t.key}`}
+                    className="ml-2 text-xs font-medium text-accent hover:underline"
+                  >
+                    S'entraîner
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -309,7 +257,7 @@ export default function Progression() {
 
       <Card>
         <h2 className="text-sm font-semibold tracking-tight">Historique des snapshots</h2>
-        {hist && hist.dates.length > 0 ? (
+        {history && history.dates.length > 0 ? (
           <div className="mt-2 overflow-x-auto">
             <table className="w-full min-w-72 text-sm">
               <thead>
@@ -320,11 +268,11 @@ export default function Progression() {
                 </tr>
               </thead>
               <tbody>
-                {hist.dates.slice(-15).map((d, i) => (
+                {history.dates.slice(-15).map((d, i) => (
                   <tr key={d + i} className="border-b border-line/50 last:border-0">
                     <td className="py-2 pr-3 tabular-nums">{d}</td>
-                    <td className="py-2 pr-3 tabular-nums">{hist.elo[i] ?? "—"}</td>
-                    <td className="py-2 tabular-nums">{hist.games[i]}</td>
+                    <td className="py-2 pr-3 tabular-nums">{history.elo[i] ?? "—"}</td>
+                    <td className="py-2 tabular-nums">{history.games[i]}</td>
                   </tr>
                 ))}
               </tbody>
@@ -332,22 +280,14 @@ export default function Progression() {
           </div>
         ) : (
           <p className="mt-2 text-sm text-muted">
-            Les snapshots se créent à chaque recalcule du profil (et chaque nuit).
+            Les snapshots se créent à chaque recalcul du profil (et chaque nuit).
           </p>
         )}
       </Card>
 
-      <div className="flex justify-end">
-        <Button
-          variant="ghost"
-          onClick={() => {
-            api.profileAll(true).then(() => window.location.reload()).catch(() => {});
-          }}
-          className="px-3 py-1.5 text-xs"
-        >
-          Recalculer les profils
-        </Button>
-      </div>
+      <p className="text-right text-xs text-muted">
+        Les profils se recalculent automatiquement à chaque synchronisation.
+      </p>
     </div>
   );
 }

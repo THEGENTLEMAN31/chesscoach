@@ -1,22 +1,33 @@
 :80 {
     root * /srv/web
-    file_server
 
-    @spa {
-        not file
+    # Moteur : fichiers statiques servis tels quels, sans cache long (revalidation
+    # systématique) pour éviter qu'un ancien .wasm/.js ne reste bloqué chez le client.
+    handle /engine/* {
+        header Cache-Control "no-cache"
+        file_server
     }
-    rewrite @spa /index.html
+
+    # SPA : fallback index.html pour les routes de l'app.
+    handle {
+        @spa not file
+        rewrite @spa /index.html
+        file_server
+    }
 
     header {
         X-Content-Type-Options "nosniff"
         X-Frame-Options "DENY"
         Referrer-Policy "strict-origin-when-cross-origin"
         Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Cross-Origin-Opener-Policy "same-origin"
+        Cross-Origin-Embedder-Policy "require-corp"
         -Server
     }
 
     @static {
         path *.js *.css *.wasm *.woff2 *.svg *.webmanifest
+        not path /engine/*
     }
     header @static Cache-Control "public, max-age=86400"
 }

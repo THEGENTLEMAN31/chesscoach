@@ -2,10 +2,10 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useSession } from "../lib/session";
 import { currentTheme, setTheme } from "../lib/theme";
+import { Brand } from "./Logo";
 import {
   ChartIcon,
   GridIcon,
-  KnightIcon,
   ListIcon,
   LogoutIcon,
   MoonIcon,
@@ -16,7 +16,7 @@ import {
 } from "./icons";
 
 const NAV = [
-  { to: "/dashboard", label: "Tableaux", icon: GridIcon },
+  { to: "/dashboard", label: "Aujourd'hui", icon: GridIcon },
   { to: "/games", label: "Parties", icon: ListIcon },
   { to: "/training", label: "Entraînement", icon: TargetIcon },
   { to: "/progression", label: "Progression", icon: ChartIcon },
@@ -43,10 +43,7 @@ export default function Layout() {
     <div className="min-h-dvh md:flex">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col border-r border-line bg-surface-2 p-4 md:flex">
         <div className="flex items-center gap-2.5 px-2 py-1">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-ink">
-            <KnightIcon className="h-5 w-5" />
-          </div>
-          <span className="text-base font-semibold tracking-tight">ChessCoach</span>
+          <Brand />
         </div>
         <nav className="mt-6 flex flex-1 flex-col gap-1">
           {NAV.map(({ to, label, icon: Icon }) => (
@@ -94,13 +91,10 @@ export default function Layout() {
       <div className="flex min-h-dvh flex-1 flex-col md:pl-64">
         <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-line bg-surface/80 px-4 backdrop-blur">
           <div className="flex items-center gap-2.5 md:hidden">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-accent-ink">
-              <KnightIcon className="h-4.5 w-4.5" />
-            </div>
-            <span className="text-sm font-semibold tracking-tight">ChessCoach</span>
+            <Brand className="[&>span:first-child]:h-7 [&>span:first-child]:w-7 [&>span:last-child]:text-sm" />
           </div>
           <h1 className="hidden text-sm font-medium text-muted md:block">
-            {current?.label ?? "ChessCoach"}
+            {current?.label ?? "Cavalel"}
           </h1>
           <div className="flex items-center gap-1.5">
             <NavLink

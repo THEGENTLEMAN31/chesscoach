@@ -1,9 +1,13 @@
+import { applyPersonalization } from "./game/settings";
+
 const KEY = "chesscoach:theme";
 
 export type Theme = "dark" | "light";
 
 function apply(t: Theme): void {
   document.documentElement.dataset.theme = t;
+  // Les accents ont une variante clair/sombre : on réapplique après le thème.
+  applyPersonalization();
 }
 
 export function initTheme(): void {

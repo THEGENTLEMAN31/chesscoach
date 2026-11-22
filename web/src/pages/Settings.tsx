@@ -6,8 +6,13 @@ import { currentTheme, setTheme } from "../lib/theme";
 import type { Theme } from "../lib/theme";
 import { useSession } from "../lib/session";
 import {
+  ACCENTS,
+  BOARD_THEMES,
+  applyPersonalization,
   loadSettings,
   saveSettings,
+  type AccentId,
+  type BoardThemeId,
   type EvalDisplay,
   type Settings as GameSettings,
 } from "../lib/game/settings";
@@ -68,6 +73,7 @@ export default function Settings() {
     const next = { ...game, ...p };
     setGame(next);
     saveSettings(next);
+    applyPersonalization(next);
   };
 
   const toggleTheme = () => {
@@ -114,7 +120,7 @@ export default function Settings() {
   ];
 
   return (
-    <div className="flex max-w-xl flex-col gap-4">
+    <div className="flex max-w-2xl flex-col gap-4">
       <h1 className="text-xl font-semibold tracking-tight">Réglages</h1>
 
       <SectionTitle>Compte</SectionTitle>
@@ -125,7 +131,7 @@ export default function Settings() {
             {user?.email}
           </div>
         </div>
-        <Button variant="ghost" onClick={() => void logout()} className="text-xs text-red-400 hover:bg-surface-3">
+        <Button variant="ghost" onClick={() => void logout()} className="text-xs text-danger hover:bg-surface-3">
           Se déconnecter
         </Button>
       </Card>
@@ -175,6 +181,84 @@ export default function Settings() {
                 {mode === "cp" ? "Pions" : "Probabilité"}
               </button>
             ))}
+          </div>
+        </div>
+      </Card>
+
+      <SectionTitle>Personnalisation</SectionTitle>
+      <Card className="flex flex-col gap-4">
+        <div>
+          <span className="block text-sm text-ink">Thème de l'échiquier</span>
+          <span className="mt-0.5 block text-xs text-muted">
+            Choisis l'apparence des cases. « Auto » suit le thème clair/sombre.
+          </span>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(["auto", "walnut", "moss", "ocean", "sand", "midnight", "graphite"] as BoardThemeId[]).map(
+              (id) => {
+                const preset =
+                  id === "auto"
+                    ? theme === "light"
+                      ? BOARD_THEMES.walnut
+                      : BOARD_THEMES.midnight
+                    : BOARD_THEMES[id as Exclude<BoardThemeId, "auto" | "custom">];
+                const label = id === "auto" ? "Auto" : preset.label;
+                const active = game.boardTheme === id;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => patchGame({ boardTheme: id })}
+                    aria-pressed={active}
+                    className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
+                      active
+                        ? "border-accent bg-accent/10 text-ink"
+                        : "border-line text-muted hover:text-ink"
+                    }`}
+                  >
+                    <span
+                      className="grid h-5 w-5 grid-cols-2 overflow-hidden rounded-[3px] border border-line"
+                      aria-hidden
+                    >
+                      <span style={{ background: preset.light }} />
+                      <span style={{ background: preset.dark }} />
+                      <span style={{ background: preset.dark }} />
+                      <span style={{ background: preset.light }} />
+                    </span>
+                    {label}
+                  </button>
+                );
+              },
+            )}
+          </div>
+        </div>
+        <div className="border-t border-line pt-3">
+          <span className="block text-sm text-ink">Couleur d'accent</span>
+          <span className="mt-0.5 block text-xs text-muted">
+            La teinte des liens, boutons et courbes principales.
+          </span>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(["blue", "teal", "violet", "amber", "rose"] as AccentId[]).map((id) => {
+              const preset = ACCENTS[id as Exclude<AccentId, "custom">];
+              const active = game.accent === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => patchGame({ accent: id })}
+                  aria-pressed={active}
+                  className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
+                    active
+                      ? "border-accent bg-accent/10 text-ink"
+                      : "border-line text-muted hover:text-ink"
+                  }`}
+                >
+                  <span
+                    className="h-3.5 w-3.5 rounded-full"
+                    style={{ background: preset.dark }}
+                    aria-hidden
+                  />
+                  {preset.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </Card>

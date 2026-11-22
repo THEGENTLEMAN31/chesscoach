@@ -22,12 +22,14 @@ function getShared(): EngineWorker {
 export function useEngine(): {
   engine: EngineWorker | null;
   state: EngineState;
+  error: Error | null;
 } {
   const [state, setState] = useState<EngineState>({
     ready: false,
     loading: true,
     failed: false,
   });
+  const [error, setError] = useState<Error | null>(null);
   const engineRef = useRef<EngineWorker | null>(null);
 
   useEffect(() => {
@@ -40,8 +42,11 @@ export function useEngine(): {
       .then(() => {
         if (!cancelled) setState({ ready: true, loading: false, failed: false });
       })
-      .catch(() => {
-        if (!cancelled) setState({ ready: false, loading: false, failed: true });
+      .catch((err) => {
+        if (!cancelled) {
+          setState({ ready: false, loading: false, failed: true });
+          setError(err instanceof Error ? err : new Error(String(err)));
+        }
       });
 
     return () => {
@@ -57,15 +62,16 @@ export function useEngine(): {
 
   const getEngine = useCallback((): EngineWorker | null => engineRef.current, []);
 
-  return { engine: getEngine(), state };
+  return { engine: getEngine(), state, error };
 }
 
 /** Lance un calcul bestmove ponctuel (retourne la PV à la profondeur max atteinte). */
 export function useAnalyse() {
-  const { engine, state } = useEngine();
+  const { engine, state, error } = useEngine();
   return {
     engine,
     state,
+    error,
     analyse: useCallback(
       async (fen: string, opts: { movetime?: number; depth?: number } = { movetime: 700 }) => {
         if (!engine) return null;

@@ -17,7 +17,6 @@ import {
   formatClock,
 } from "../lib/constants";
 import { legalMoveTargets, pieceAt, tryPlay, type Promo } from "../lib/game/board";
-import { playerWinProb } from "../lib/game/eval";
 import type { Settings } from "../lib/game/settings";
 import { loadSettings } from "../lib/game/settings";
 import { useAnalyse } from "../lib/engine/use-engine";
@@ -60,7 +59,7 @@ export default function GameReview() {
     null,
   );
   const [settings] = useState<Settings>(loadSettings);
-  const { engine, state: engineState, analyse } = useAnalyse();
+  const { engine, state: engineState, error: engineError, analyse } = useAnalyse();
   const [live, setLive] = useState<LiveEval | null>(null);
   const [localBest, setLocalBest] = useState<Record<number, string>>({});
   const liveCache = useRef(new Map<string, LiveEval>());
@@ -584,8 +583,9 @@ export default function GameReview() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-          <Card>
-            <div className="flex items-start justify-center gap-3">
+          <div className="flex flex-col gap-4">
+          <Card className="lg:sticky lg:top-20 w-full">
+            <div className="flex items-stretch justify-center gap-3">
               <div className="min-w-0 flex-1">
                 <Board
                   fen={position}
@@ -605,17 +605,17 @@ export default function GameReview() {
                   }}
                 />
               </div>
-              {mode === "engine" && (
-                <div className="shrink-0">
+{mode === "engine" && (
+                <div className="shrink-0 self-stretch flex">
                   {(() => {
                     const evalPt = live?.cp != null ? { cp: live.cp, mate: null } : (ply?.eval_after ?? null);
-                    const wp = playerWinProb(evalPt, game.player_color);
-                    const label = evalPt?.mate != null
+                    if (!evalPt) return null;
+                    const label = evalPt.mate != null
                       ? `M${evalPt.mate}`
-                      : evalPt?.cp != null
-                      ? `${evalPt.cp >= 0 ? "+" : ""}${(evalPt.cp / 100).toFixed(1)}`
-                      : "…";
-                    return <EvalBar wp={wp} label={label} />;
+                      : evalPt.cp != null
+                        ? `${evalPt.cp >= 0 ? "+" : ""}${(evalPt.cp / 100).toFixed(1)}`
+                        : "…";
+                    return <EvalBar cp={evalPt.cp ?? null} label={label} />;
                   })()}
                 </div>
               )}
@@ -636,10 +636,24 @@ export default function GameReview() {
             {mode === "engine" && (
               <div className="mt-3">
                 {engineState.failed ? (
-                  <p className="text-xs text-muted">
-                    Moteur local indisponible (WASM non chargé). Évaluation serveur
-                    uniquement.
-                  </p>
+                  <div className="flex flex-col gap-1.5 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs">
+                    <p className="font-medium text-danger">Moteur local indisponible</p>
+                    <p className="text-muted">
+                      {engineError?.message ?? "Erreur inconnue du moteur WASM"}
+                    </p>
+                    <p className="text-[10px] text-muted">
+                      Causes possibles : WASM non chargé, mémoire insuffisante, navigateur incompatible.
+                    </p>
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="mt-1 w-max rounded-md border border-line-strong px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-surface-3"
+                    >
+                      Réessayer
+                    </button>
+                    <p className="text-[10px] text-muted">
+                      L'analyse de la partie reste disponible sans le moteur local.
+                    </p>
+                  </div>
                 ) : (
                   <>
                     <p className="mt-1 text-xs text-muted">
@@ -696,8 +710,60 @@ export default function GameReview() {
               )}
             </div>
           </Card>
+          {mode === "engine" && (
+            <Card>
+              <h2 className="mb-2 text-sm font-semibold tracking-tight">Évaluation de la partie</h2>
+              <EvalCurve game={game} selectedPly={selected} onSelectPly={setSelected} />
+            </Card>
+          )}
+          </div>
 
-          <div className="flex flex-col gap-4">
+<div className="flex flex-col gap-4">
+            {/* 3 moments clés - résumé actionnable */}
+            {mode === "engine" && game.plies.length > 0 && (
+              <Card>
+                <h2 className="text-sm font-semibold tracking-tight">3 moments clés</h2>
+                <p className="mt-1 text-xs text-muted">
+                  Les coups qui ont le plus changé la probabilité de gain.
+                </p>
+                <ul className="mt-2 flex flex-col gap-2">
+                  {game.plies
+                    .filter((p) => p.is_player && p.classification && ["blunder", "mistake"].includes(p.classification))
+                    .sort((a, b) => (b.winprob_loss ?? 0) - (a.winprob_loss ?? 0))
+                    .slice(0, 3)
+                    .map((p: PlyOut) => (
+                      <li key={p.ply} className="flex items-center gap-2 rounded-lg border border-line/50 bg-surface-2/50 px-2.5 py-2">
+                        <span
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold"
+                          style={{ backgroundColor: CLASS_COLOR[p.classification ?? ""] }}
+                        >
+                          {p.classification === "blunder" ? "‼" : p.classification === "mistake" ? "?" : "!"}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-ink truncate">
+                            Coup {Math.floor((p.ply + 1) / 2)} · {p.san} ({CLASS_LABEL[p.classification ?? ""]})
+                          </p>
+                          <p className="text-[10px] text-muted">
+                            Perte : {p.winprob_loss ? `${p.winprob_loss} pts prob.` : "?"}
+                            {p.concept ? ` · ${CONCEPT_LABEL[p.concept]}` : ""}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setSelected(p.ply)}
+                          className="shrink-0 text-xs font-medium text-accent hover:underline"
+                        >
+                          Voir
+                        </button>
+                      </li>
+                    ))}
+                  {game.plies.filter((p) => p.is_player && p.classification && ["blunder", "mistake"].includes(p.classification)).length === 0 && (
+                    <li className="text-xs text-muted text-center py-2">
+                      Aucune erreur majeure détectée dans cette partie.
+                    </li>
+                  )}
+                </ul>
+              </Card>
+            )}
             {mode === "engine" ? (
               <>
                 <Card>
@@ -732,9 +798,6 @@ export default function GameReview() {
                   )}
                 </Card>
                 <Card>
-                  <EvalCurve game={game} />
-                </Card>
-                <Card>
                   <button
                     onClick={() =>
                       setPanelsOpen((p) => ({ ...p, movelist: !p.movelist }))
@@ -767,11 +830,13 @@ export default function GameReview() {
                           Temps de réflexion : {formatClock(ply.time_taken)}
                         </p>
                       )}
-                      <MoveList
-                        plies={game.plies}
-                        selectedPly={selected}
-                        onSelect={setSelected}
-                      />
+                      <div className="max-h-[55vh] overflow-y-auto pr-1">
+                        <MoveList
+                          plies={game.plies}
+                          selectedPly={selected}
+                          onSelect={setSelected}
+                        />
+                      </div>
                     </div>
                   )}
                 </Card>

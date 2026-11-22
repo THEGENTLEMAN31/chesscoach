@@ -14,8 +14,12 @@ if (!existsSync(join(src, "stockfish-18-lite-single.js"))) {
 mkdirSync(out, { recursive: true });
 copyFileSync(join(src, "stockfish-18-lite-single.js"), join(out, "stockfish.js"));
 copyFileSync(join(src, "stockfish-18-lite-single.wasm"), join(out, "stockfish.wasm"));
+// IMPORTANT : stockfish.js chargé dans un worker dérive le wasm de son propre
+// nom (`worker.js` -> `worker.wasm`) quand le hash n'est pas exploité. On
+// fournit donc aussi `worker.wasm` pour que le moteur se charge du premier coup.
+copyFileSync(join(src, "stockfish-18-lite-single.wasm"), join(out, "worker.wasm"));
 // worker.js est COMMITTÉ (public/engine/worker.js) pour ne pas écraser le
 // correctif PWA : sans lui, la réponse .wasm servie par le cache du service
 // worker perd son Content-Type et instantiateStreaming échoue chez l'utilisateur.
 // On ne le régénère pas ici (c'était `importScripts("stockfish.js");`).
-console.log("[vendor-engine] stockfish.js + stockfish.wasm vitrinés dans public/engine/");
+console.log("[vendor-engine] stockfish.js + stockfish.wasm + worker.wasm vitrinés dans public/engine/");

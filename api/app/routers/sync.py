@@ -24,9 +24,13 @@ ACCEPTABLE_CLASSES = TIME_CLASSES | {"bullet", "daily"}
 async def sync(
     req: SyncRequest,
     manager: SyncManager = Depends(get_manager),
+    db: aiosqlite.Connection = Depends(get_db),
     username: str = Depends(current_username),
 ) -> SyncResult:
-    result = await manager.start(username, req.months)
+    # Détecter si c'est une première sync (pas encore de parties)
+    cur = await db.execute("SELECT 1 FROM games WHERE username=? LIMIT 1", (username,))
+    is_initial = await cur.fetchone() is None
+    result = await manager.start(username, req.months, initial=is_initial)
     if result.get("status") == "already_running":
         raise HTTPException(409, "un pipeline est déjà en cours")
     return SyncResult(**result)

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
+from contextlib import asynccontextmanager
 
 import aiosqlite
 
@@ -19,6 +21,20 @@ from ..openings import OpeningBook
 from .sync import SyncPipeline
 
 logger = logging.getLogger(__name__)
+
+# Limite globale de pipelines concurrents (évite saturation CPU/analyzer)
+MAX_CONCURRENT_PIPELINES = getattr(settings, "max_concurrent_pipelines", 2)
+_pipeline_sem = asyncio.Semaphore(MAX_CONCURRENT_PIPELINES)
+
+
+@asynccontextmanager
+async def pipeline_slot():
+    """Contexte pour acquérir un slot de pipeline avec timeout."""
+    await _pipeline_sem.acquire()
+    try:
+        yield
+    finally:
+        _pipeline_sem.release()
 
 
 class SyncManager:
@@ -37,9 +53,13 @@ class SyncManager:
     def last(self, username: str) -> dict | None:
         return self._last.get(username)
 
-    async def start(self, username: str, months: int) -> dict:
+    async def start(self, username: str, months: int, initial: bool = False) -> dict:
         """Lance le pipeline d'analyse d'historique en tâche de fond ; renvoie
-        immédiatement le run_id. Un seul run par utilisateur à la fois."""
+        immédiatement le run_id. Un seul run par utilisateur à la fois.
+        
+        Si `initial=True` (nouvel utilisateur), limite l'analyse serveur aux
+        30-50 dernières parties pour éviter un backlog massif.
+        """
         if username in self._tasks or username in self._pending:
             return {"run_id": None, "username": username, "status": "already_running"}
         # Verrou atomique : on réserve AVANT le premier await pour éviter que
@@ -54,52 +74,57 @@ class SyncManager:
         except Exception:
             self._pending.discard(username)
             raise
-        task = asyncio.create_task(self._run(username, months, run_id))
+        task = asyncio.create_task(self._run(username, months, run_id, initial=initial))
         self._tasks[username] = task
         self._pending.discard(username)
         return {"run_id": run_id, "username": username, "status": "started",
                 "games_seen": 0, "games_new": 0, "games_analyzed": 0}
 
-    async def _run(self, username: str, months: int, run_id: int) -> None:
+    async def _run(self, username: str, months: int, run_id: int, initial: bool = False) -> None:
         # Verrou PAR UTILISATEUR : les pipelines de comptes différents ne se
         # bloquent plus mutuellement (le verrou global serialisait tout le monde).
         lock = self._locks.setdefault(username, asyncio.Lock())
-        try:
+        # Acquérir un slot de pipeline global (limite le nb de pipelines concurrents)
+        async with pipeline_slot():
             async with lock:
-                result = await self._pipeline.sync(username, months, run_id=run_id)
-                # Analyse des parties 'synced' dans la foulée, par lots reprenables.
-                analyzed = 0
-                while True:
-                    done = await self._pipeline.analyze_new(
-                        username, limit=settings.analysis_batch_size
-                    )
-                    if not done:
-                        break
-                    analyzed += done
-                if analyzed:
+                try:
+                    result = await self._pipeline.sync(username, months, run_id=run_id)
+                    # Analyse des parties 'synced' dans la foulée, par lots reprenables.
+                    # Pour un nouvel utilisateur (initial=True), on limite l'analyse serveur
+                    # aux 30-50 dernières parties pour éviter un backlog massif.
+                    initial_limit = 50 if initial else settings.analysis_batch_size
+                    analyzed = 0
+                    while True:
+                        done = await self._pipeline.analyze_new(
+                            username, limit=initial_limit
+                        )
+                        if not done:
+                            break
+                        analyzed += done
+                    if analyzed:
+                        await self._db.execute(
+                            "UPDATE sync_runs SET games_analyzed=? WHERE id=?",
+                            (analyzed, run_id),
+                        )
+                        await self._db.commit()
+                    result["games_analyzed"] = result.get("games_analyzed", 0) + analyzed
+                    self._last[username] = result
+                    logger.info("Sync terminée pour %s : %s", username, result)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Pipeline en échec (%s)", username)
                     await self._db.execute(
-                        "UPDATE sync_runs SET games_analyzed=? WHERE id=?",
-                        (analyzed, run_id),
+                        "UPDATE sync_runs SET status='error', error=?, finished_at=datetime('now') WHERE id=?",
+                        (str(exc)[:500], run_id),
                     )
                     await self._db.commit()
-                result["games_analyzed"] = result.get("games_analyzed", 0) + analyzed
-                self._last[username] = result
-                logger.info("Sync terminée pour %s : %s", username, result)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Pipeline en échec (%s)", username)
-            await self._db.execute(
-                "UPDATE sync_runs SET status='error', error=?, finished_at=datetime('now') WHERE id=?",
-                (str(exc)[:500], run_id),
-            )
-            await self._db.commit()
-            self._last[username] = {"run_id": run_id, "username": username,
-                                    "status": "error", "error": str(exc)}
-        finally:
-            self._tasks.pop(username, None)
-            if username not in self._tasks:
-                self._locks.pop(username, None)
+                    self._last[username] = {"run_id": run_id, "username": username,
+                                            "status": "error", "error": str(exc)}
+                finally:
+                    self._tasks.pop(username, None)
+                    if username not in self._tasks:
+                        self._locks.pop(username, None)
 
     async def status(self, username: str) -> dict:
         pending = await self._db.execute(

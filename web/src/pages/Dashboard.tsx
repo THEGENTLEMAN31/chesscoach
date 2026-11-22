@@ -12,8 +12,8 @@ import {
 } from "../lib/constants";
 import { useSession } from "../lib/session";
 import { useToast } from "../lib/toast";
+import { buildEloPoints } from "../lib/game/elo-series";
 import type { ClassCount } from "../lib/types";
-import type { PlayerProfile } from "../lib/profile-types";
 
 function ClassRow({ c }: { c: ClassCount }) {
   const total = c.games || 1;
@@ -66,19 +66,18 @@ export default function Dashboard() {
   });
   const nextExercise = nextExQ.data?.[0] ?? null;
 
-  const profileQ = useQuery({
-    queryKey: ["profile-all"],
-    queryFn: () => api.profileAll(),
-  });
   const objectivesQ = useQuery({
     queryKey: ["objectives"],
     queryFn: () => api.objectives(),
   });
-
-  const profile = useMemo(() => {
-    const raw = profileQ.data?.profiles?.global;
-    return (raw as unknown as PlayerProfile) ?? null;
-  }, [profileQ.data]);
+  const rapidGamesQ = useQuery({
+    queryKey: ["elo-rapid"],
+    queryFn: () => api.games({ time_class: "rapid", limit: "120" }),
+  });
+  const blitzGamesQ = useQuery({
+    queryKey: ["elo-blitz"],
+    queryFn: () => api.games({ time_class: "blitz", limit: "120" }),
+  });
 
   const running = syncQ.data?.running ?? false;
   const pending = syncQ.data?.pending_analysis ?? 0;
@@ -99,18 +98,49 @@ export default function Dashboard() {
     }
   }, [isEmpty, running]);
 
-  const eloData = useMemo(() => {
-    if (!profile) return null;
-    const current = profile.rating.latest;
-    const target = objectivesQ.data?.targets?.rapid ?? profile.objective?.target_elo ?? null;
-    const trend = profile.progress?.elo_trend ?? null;
-    const eloCurve = profile.progress?.elo_curve ?? [];
-    const last30 = eloCurve.filter((p) => {
-      const d = new Date(p.date).getTime();
-      return d >= Date.now() - 30 * 24 * 3600_000;
-    });
-    return { current, target, trend, eloCurve: last30 };
-  }, [profile, objectivesQ.data]);
+  const elo = useMemo(() => {
+    const rapidPts = buildEloPoints(rapidGamesQ.data?.items ?? [], 60);
+    const blitzPts = buildEloPoints(blitzGamesQ.data?.items ?? [], 60);
+    const latestRapid = rapidPts.length ? rapidPts[rapidPts.length - 1].elo : null;
+    const latestBlitz = blitzPts.length ? blitzPts[blitzPts.length - 1].elo : null;
+    // Cadence mise en avant : Rapide (objectif principal), sinon Blitz.
+    const primary = rapidPts.length
+      ? { timeClass: "rapid" as const, points: rapidPts }
+      : blitzPts.length
+        ? { timeClass: "blitz" as const, points: blitzPts }
+        : null;
+    if (!primary) {
+      return { series: [], target: null, current: null, first: null, delta: null, count: 0, timeClass: "", fromDate: null, toDate: null, latestRapid, latestBlitz };
+    }
+    const target = objectivesQ.data?.targets?.[primary.timeClass] ?? null;
+    const pts = primary.points.slice(-50);
+    const first = pts.length ? pts[0].elo : null;
+    const last = pts.length ? pts[pts.length - 1].elo : null;
+    const fromDate = pts.length ? pts[0].date : null;
+    const toDate = pts.length ? pts[pts.length - 1].date : null;
+    const delta = first != null && last != null && pts.length > 1 ? Math.round(last - first) : null;
+    const color = primary.timeClass === "rapid" ? "var(--chart-1)" : "var(--chart-2)";
+    return {
+      series: [
+        {
+          id: primary.timeClass,
+          label: TIME_CLASS_LABEL[primary.timeClass] ?? primary.timeClass,
+          color,
+          points: pts,
+        },
+      ],
+      target,
+      current: last,
+      first,
+      delta,
+      count: pts.length,
+      timeClass: primary.timeClass,
+      fromDate,
+      toDate,
+      latestRapid,
+      latestBlitz,
+    };
+  }, [rapidGamesQ.data, blitzGamesQ.data, objectivesQ.data]);
 
   const form = useMemo(() => {
     const games = (formQ.data?.items ?? []).slice(0, 10);
@@ -223,62 +253,64 @@ export default function Dashboard() {
           </Card>
         ) : (
           <>
-            {/* ELO Header */}
-{eloData && (
-               <Card className="sm:col-span-4 p-4">
-                 <div className="flex flex-col gap-4">
-                  <div className="flex flex-wrap items-center gap-4">
-                    {eloData.current != null && (
-<div className="flex items-baseline gap-1.5">
-                   <span className="text-xs text-muted">ÉLO (global)</span>
-                   <span className="text-2xl font-bold tracking-tight text-ink tabular-nums">
-                     {eloData.current}
-                   </span>
-                 </div>
+            {/* Progression Elo (signal compact) */}
+            {elo.series.length > 0 && (
+              <Card className="order-2 sm:col-span-4 p-4">
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <span className="text-xs text-muted">
+                      {TIME_CLASS_LABEL[elo.timeClass] ?? "Elo"}
+                    </span>
+                    <span className="text-xl font-bold tracking-tight text-ink tabular-nums">
+                      {elo.current ?? "—"}
+                    </span>
+                    {elo.delta != null && (
+                      <span className={`text-xs ${elo.delta >= 0 ? "text-eval-up" : "text-eval-down"}`}>
+                        {elo.delta >= 0 ? "↗ +" : "↘ "}
+                        {elo.delta} sur {elo.count} parties
+                      </span>
                     )}
-                    {eloData.target != null && eloData.current != null && (
-<Link to="/profile" className="group flex items-baseline gap-1.5">
-                         <span className="text-xs text-muted">Objectif rapide</span>
-                         <span className="text-lg font-semibold text-accent tabular-nums group-hover:underline">
-                           {eloData.target}
-                         </span>
-                         {profile?.objective?.progression_pct != null && (
-                           <span className="text-xs text-muted">
-                             ({Math.round(profile.objective.progression_pct)}% fait)
-                           </span>
-                         )}
-                       </Link>
-                    )}
-                    {eloData.trend != null && (
-                      <div className="flex items-center gap-1 text-xs">
-                        <span className="text-muted">Tendance</span>
-                        <span className={eloData.trend >= 0 ? "text-eval-up" : "text-eval-down"}>
-                          {eloData.trend >= 0 ? "↗" : "↘"} {eloData.trend >= 0 ? "+" : ""}
-                          {Math.round(eloData.trend)} pts/mois
-                        </span>
-                      </div>
+                    {elo.target != null && (
+                      <Link to="/profile" className="ml-auto text-xs text-muted hover:text-ink">
+                        Objectif{" "}
+                        <b className="text-accent tabular-nums">{elo.target}</b>
+                      </Link>
                     )}
                   </div>
-                  {eloData.eloCurve.length > 1 && (
-                    <div className="mt-1">
-<EloChart
-                         series={[{
-                           label: "ELO",
-                           color: "var(--color-accent, #6fa8dc)",
-                           dates: eloData.eloCurve.map((p) => p.date),
-                           elo: eloData.eloCurve.map((p) => p.elo),
-                         }]}
-                         height={260}
-                         milestones={[1200, 1400, 1600, 1800, 2000]}
-                       />
-                    </div>
+                  {elo.count > 1 && elo.first != null && elo.current != null && elo.fromDate != null && elo.toDate != null && (
+                    <p className="text-[11px] tabular-nums text-subtle">
+                      {elo.first} → {elo.current} ·{" "}
+                      {new Date(elo.fromDate).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}{" "}
+                      →{" "}
+                      {new Date(elo.toDate).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
+                    </p>
                   )}
+                  <EloChart
+                    series={elo.series}
+                    variant="compact"
+                    height={150}
+                    smooth
+                    smoothWindow={8}
+                    target={elo.target}
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+                    <span className="tabular-nums">
+                      Rapide {elo.latestRapid ?? "—"} · Blitz {elo.latestBlitz ?? "—"}
+                    </span>
+                    <Link
+                      to="/progression"
+                      className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
+                    >
+                      Voir ma progression
+                      <ChevronRightIcon className="h-3.5 w-3.5" />
+                    </Link>
+                  </div>
                 </div>
               </Card>
             )}
 
             {/* Hero card: À travailler */}
-            <Card className="sm:col-span-4 border-accent/30 bg-accent/5 p-5">
+            <Card className="order-1 sm:col-span-4 border-accent/30 bg-accent/5 p-5">
               <div className="flex items-center gap-2">
                 <TargetIcon className="h-4 w-4 text-accent" />
                 <h2 className="text-sm font-medium text-muted">À travailler</h2>
@@ -329,7 +361,7 @@ export default function Dashboard() {
             </Card>
 
             {/* Ma forme (compact) */}
-            <Card className="sm:col-span-2 flex flex-col gap-2">
+            <Card className="order-3 sm:col-span-2 flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <ChartIcon className="h-4 w-4 text-accent" />
                 <h2 className="text-sm font-medium text-muted">Ma forme</h2>
@@ -367,7 +399,7 @@ export default function Dashboard() {
             </Card>
 
             {/* Cadences */}
-            <Card className="sm:col-span-2">
+            <Card className="order-4 sm:col-span-2">
               <h2 className="text-sm font-medium text-muted">Cadences</h2>
               {statsQ.isLoading ? (
                 <div className="flex h-24 items-center justify-center">
@@ -388,7 +420,7 @@ export default function Dashboard() {
             </Card>
 
             {/* Synchronisation (condensed) */}
-            <Card className="sm:col-span-4 flex flex-col gap-3">
+            <Card className="order-5 sm:col-span-4 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <BoltIcon className="h-4 w-4 text-accent" />
@@ -431,7 +463,7 @@ export default function Dashboard() {
             </Card>
 
             {/* Mes dernières parties */}
-            <Card className="sm:col-span-4">
+            <Card className="order-6 sm:col-span-4">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-medium text-muted">Mes dernières parties</h2>
                 <Link

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
+import shutil
 from contextlib import asynccontextmanager
 
 from pathlib import Path
@@ -40,7 +42,8 @@ async def _autosync_loop(app: FastAPI) -> None:
     """Récupère périodiquement les dernières parties de tous les comptes connus.
 
     Attend `sync_auto_initial_delay` s, puis boucle toutes les
-    `sync_auto_interval_h` heures. Ne force jamais : si un pipeline est déjà
+    `sync_auto_interval_h` heures. Jitter aléatoire ajouté pour éviter
+    les rafales simultanées. Ne force jamais : si un pipeline est déjà
     en cours pour un utilisateur, il est ignoré (idempotent).
     """
     manager: SyncManager = app.state.manager
@@ -52,7 +55,10 @@ async def _autosync_loop(app: FastAPI) -> None:
                 "SELECT DISTINCT username FROM games WHERE username IS NOT NULL"
             )
             users = [r["username"] for r in await cur.fetchall()]
+            # Jitter par utilisateur pour répartir la charge
             for username in users:
+                # Jitter 0-60s pour étaler les démarrages
+                await asyncio.sleep(random.uniform(0, 60))
                 try:
                     await manager.start(username, settings.sync_months)
                 except Exception as exc:  # noqa: BLE001 — un compte ne bloque pas les autres
@@ -61,7 +67,10 @@ async def _autosync_loop(app: FastAPI) -> None:
             return
         except Exception as exc:  # noqa: BLE001
             logger.warning("Boucle auto-sync : erreur : %s", exc)
-        await asyncio.sleep(settings.sync_auto_interval_h * 3600)
+        # Jitter sur l'intervalle global (±10%) pour éviter la synchronisation parfaite
+        interval = settings.sync_auto_interval_h * 3600
+        jitter = interval * 0.1
+        await asyncio.sleep(interval + random.uniform(-jitter, jitter))
 
 
 @asynccontextmanager
@@ -99,6 +108,43 @@ app.include_router(sync.router)
 app.include_router(games.router)
 app.include_router(stats.router)
 app.include_router(training.router)
+
+
+@app.get("/health")
+async def health() -> dict:
+    row = await (await app.state.db.execute("SELECT 1")).fetchone()
+    return {"ok": row is not None}
+
+
+@app.get("/ready")
+async def ready() -> dict:
+    """Readiness probe: vérifie DB, analyzer, disque, pipeline semaphore."""
+    checks = {}
+    # DB
+    try:
+        row = await (await app.state.db.execute("SELECT 1")).fetchone()
+        checks["db"] = row is not None
+    except Exception as e:
+        checks["db"] = False
+    # Analyzer
+    try:
+        ok = await app.state.analyzer.health()
+        checks["analyzer"] = ok.get("status") == "ok"
+    except Exception:
+        checks["analyzer"] = False
+    # Disque (espace > 500MB)
+    import shutil
+    try:
+        total, used, free = shutil.disk_usage("/")
+        checks["disk"] = free > 500 * 1024 * 1024
+    except Exception:
+        checks["disk"] = True  # ne pas bloquer si shutil non dispo
+    # Pipeline semaphore
+    from .services.manager import _pipeline_sem
+    checks["pipeline_sem"] = _pipeline_sem._value > 0
+    
+    all_ok = all(checks.values())
+    return {"ok": all_ok, "checks": checks}
 
 
 @app.get("/health")

@@ -55,9 +55,15 @@ export function uciScore(info: EngineInfo): number | null {
   return info.scoreCp;
 }
 
+// On charge `stockfish.js` DIRECTEMENT comme Worker (pas de wrapper). Ainsi son
+// wasm est dérivé de son propre nom (`stockfish.js` -> `stockfish.wasm`), fichier
+// qui a toujours été servi correctement. Le `?v=` buste tout cache d'ancienne
+// version, et le hash fournit explicitement le chemin du wasm.
+const ENGINE_VERSION = "18";
 const ENGINE_WORKER_URL = () => {
   const origin = typeof location !== "undefined" ? location.origin : "";
-  return `${origin}/engine/worker.js#${origin}/engine/stockfish.wasm,worker`;
+  const wasm = `${origin}/engine/stockfish.wasm`;
+  return `${origin}/engine/stockfish.js?v=${ENGINE_VERSION}#${wasm}`;
 };
 
 interface Pending {
@@ -69,7 +75,7 @@ interface Pending {
 }
 
 const SEARCH_TIMEOUT_MS = 45_000;
-const BOOT_TIMEOUT_MS = 15_000;
+const BOOT_TIMEOUT_MS = 60_000;
 
 export class EngineWorker {
   private worker: Worker;
@@ -101,9 +107,9 @@ export class EngineWorker {
         clearTimeout(timer);
         reject(new Error(reason instanceof Error ? reason.message : "Initialisation du moteur échouée"));
       };
-      const timer = setTimeout(() => fail(new Error("Délai d'initialisation du moteur dépassé")), BOOT_TIMEOUT_MS);
+      const timer = setTimeout(() => fail(new Error("Délai d'initialisation du moteur dépassé (60s)")), BOOT_TIMEOUT_MS);
       this.worker.addEventListener("message", readyListener);
-      this.worker.addEventListener("error", () => fail(new Error("Le moteur WASM n'a pas pu être chargé")));
+      this.worker.addEventListener("error", () => fail(new Error("Le moteur WASM n'a pas pu être chargé (erreur worker)")));
       this.worker.postMessage("uci");
     });
   }

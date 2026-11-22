@@ -25,9 +25,9 @@ VitePWA({
         "pwa-maskable-512x512.png",
       ],
       manifest: {
-        name: "ChessCoach",
-        short_name: "ChessCoach",
-        description: "Coach d'échecs personnel — local-first",
+        name: "Cavalel",
+        short_name: "Cavalel",
+        description: "Tes erreurs deviennent ton plan de progression. Coach d'échecs local-first.",
         lang: "fr",
         id: "/",
         theme_color: "#0B0E11",
@@ -90,8 +90,8 @@ VitePWA({
               request.method === "GET",
             handler: "CacheFirst",
             options: {
-              cacheName: "engine-wasm",
-              expiration: { maxEntries: 2, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheName: "engine-wasm-v3",
+              expiration: { maxEntries: 3, maxAgeSeconds: 60 * 60 * 24 * 30 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },

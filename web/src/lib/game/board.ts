@@ -27,12 +27,15 @@ export function legalSquareStyles(
 ): CustomSquareStyles {
   const styles: CustomSquareStyles = {};
   if (selected) {
-    styles[selected] = { boxShadow: "inset 0 0 0 4px rgba(47,124,214,0.6)" };
+    styles[selected] = {
+      background: "var(--board-select)",
+      boxShadow: "inset 0 0 0 3px var(--board-select-ring)",
+    };
   }
   for (const t of targets) {
     styles[t.to] = t.capture
-      ? { boxShadow: "inset 0 0 0 6px rgba(0,0,0,0.16)" }
-      : { background: "radial-gradient(circle, rgba(0,0,0,0.34) 24%, transparent 25%)" };
+      ? { boxShadow: "inset 0 0 0 4px var(--board-legal)" }
+      : { background: "radial-gradient(circle, var(--board-legal) 22%, transparent 23%)" };
   }
   return styles;
 }

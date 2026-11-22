@@ -1,273 +1,367 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { rollingAverage, type EloPoint } from "../lib/game/elo-series";
 
-interface EloSeries {
+export interface EloChartSeries {
+  id: string;
   label: string;
   color: string;
-  dates: string[];
-  elo: (number | null)[];
+  points: EloPoint[];
+  dashed?: boolean;
 }
 
 interface EloChartProps {
-  series: EloSeries[];
-  dateMin?: string | null;
-  dateMax?: string | null;
-  eloMin?: number | null;
-  eloMax?: number | null;
+  series: EloChartSeries[];
   height?: number;
-  /** Paliers affichés (lignes pointillées discrètes), ex. 1200, 1400… */
-  milestones?: number[];
+  variant?: "compact" | "analysis";
+  /** Affiche la moyenne glissante comme ligne principale. */
+  smooth?: boolean;
+  smoothWindow?: number;
+  target?: number | null;
+  onSelectPoint?: (p: EloPoint) => void;
 }
 
-const W = 940;
-const PAD = { top: 32, right: 32, bottom: 64, left: 72 };
+const PAD_ANALYSIS = { top: 18, right: 18, bottom: 34, left: 54 };
+const PAD_COMPACT = { top: 12, right: 12, bottom: 20, left: 40 };
 
-function tsi(iso: string): number {
-  const s = iso.length === 10 ? iso + "T00:00:00Z" : iso;
-  const n = Date.parse(s);
-  return Number.isNaN(n) ? 0 : n;
+function useWidth() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) setW(e.contentRect.width);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, w] as const;
 }
 
-const MOIS = ["jan", "fév", "mar", "avr", "mai", "juin", "juil", "aoû", "sep", "oct", "nov", "déc"];
-function labelX(t: number): string {
-  const d = new Date(t);
-  return `${MOIS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+function niceStep(range: number, count: number): number {
+  if (range <= 0) return 1;
+  const raw = range / Math.max(1, count);
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const norm = raw / mag;
+  const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
+  return step * mag;
 }
 
-function labelFull(t: number): string {
-  const d = new Date(t);
-  return `${d.toLocaleDateString("fr-FR")} · ${labelX(t)}`;
+function fmtDate(ms: number): string {
+  return new Date(ms).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function smoothed(points: EloPoint[], window: number): (number | null)[] {
+  return rollingAverage(points, window);
 }
 
 export default function EloChart({
   series,
-  dateMin,
-  dateMax,
-  eloMin,
-  eloMax,
-  height = 480,
-  milestones = [1200, 1400, 1600, 1800, 2000, 2200],
+  height = 320,
+  variant = "analysis",
+  smooth = false,
+  smoothWindow = 10,
+  target = null,
+  onSelectPoint,
 }: EloChartProps) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  // Plage [0,1] du crosshair horizontal (ou null si pas de survol).
-  const [hover, setHover] = useState<number | null>(null);
+  const [wrapRef, width] = useWidth();
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const compact = variant === "compact";
 
-  type Pt = { iso: string; e: number; s: number };
-  const all: Pt[] = [];
-  const bySeries: Pt[][] = [];
-  for (let s = 0; s < series.length; s++) bySeries.push([]);
-  let tMin = Number.POSITIVE_INFINITY;
-  let tMax = Number.NEGATIVE_INFINITY;
-  for (let s = 0; s < series.length; s++) {
-    const { dates, elo } = series[s];
-    for (let i = 0; i < dates.length; i++) {
-      if (elo[i] == null) continue;
-      const t = tsi(dates[i]);
-      const p: Pt = { iso: dates[i], e: elo[i] as number, s };
-      all.push(p);
-      bySeries[s].push(p);
-      if (t < tMin) tMin = t;
-      if (t > tMax) tMax = t;
+  const prepared = useMemo(
+    () =>
+      series.map((s) => {
+        const avg = smooth ? smoothed(s.points, smoothWindow) : null;
+        return { ...s, avg };
+      }),
+    [series, smooth, smoothWindow],
+  );
+
+  const maxLen = Math.max(1, ...series.map((s) => s.points.length));
+  const hasData = series.some((s) => s.points.length > 0);
+
+  const W = Math.max(220, width || 640);
+  const H = width > 0 && width < 480 ? Math.min(height, 240) : height;
+  const m = compact ? PAD_COMPACT : width > 0 && width < 480 ? { top: 12, right: 12, bottom: 28, left: 42 } : PAD_ANALYSIS;
+  const IW = Math.max(10, W - m.left - m.right);
+  const IH = Math.max(10, H - m.top - m.bottom);
+
+  const domain = useMemo(() => {
+    const vals: number[] = [];
+    for (const s of prepared) {
+      for (const p of s.points) vals.push(p.elo);
+      if (s.avg) for (const v of s.avg) if (v != null) vals.push(v);
     }
-  }
-  if (all.length === 0) return <p className="text-sm text-muted">Pas encore assez de points.</p>;
+    if (vals.length === 0) return { eLo: 0, eHi: 1, ticks: [] as number[] };
+    const a = Math.min(...vals);
+    const b = Math.max(...vals);
+    const pad = Math.max(8, (b - a) * 0.12);
+    const step = niceStep(Math.max(30, b - a + 2 * pad), compact ? 3 : 4);
+    const eLo = Math.floor((a - pad) / step) * step;
+    const eHi = Math.ceil((b + pad) / step) * step;
+    const ticks: number[] = [];
+    for (let v = eLo; v <= eHi + step * 0.001; v += step) ticks.push(Math.round(v));
+    return { eLo, eHi, ticks };
+  }, [prepared, target, compact]);
 
-  const fT0 = dateMin ? tsi(dateMin) : Number.NEGATIVE_INFINITY;
-  const fT1 = dateMax ? tsi(dateMax) + 86399999 : Number.POSITIVE_INFINITY;
-  const fE0 = eloMin != null ? eloMin : Number.NEGATIVE_INFINITY;
-  const fE1 = eloMax != null ? eloMax : Number.POSITIVE_INFINITY;
-  const inF = (p: Pt) =>
-    tsi(p.iso) >= fT0 && tsi(p.iso) <= fT1 && p.e >= fE0 && p.e <= fE1;
+  const T = (i: number) => m.left + (maxLen <= 1 ? IW / 2 : (i / (maxLen - 1)) * IW);
+  const Y = (e: number) => m.top + (1 - (e - domain.eLo) / Math.max(1, domain.eHi - domain.eLo)) * IH;
 
-  const vis = all.filter(inF);
-  const tA = vis.reduce((a, p) => Math.min(a, tsi(p.iso)), Number.POSITIVE_INFINITY);
-  const tB = vis.reduce((a, p) => Math.max(a, tsi(p.iso)), Number.NEGATIVE_INFINITY);
-  const eA = vis.reduce((a, p) => Math.min(a, p.e), Number.POSITIVE_INFINITY);
-  const eB = vis.reduce((a, p) => Math.max(a, p.e), Number.NEGATIVE_INFINITY);
-  const padE = Math.max(15, Math.round((eB - eA) * 0.15));
-  const tLo = Number.isFinite(fT0) ? fT0 : tA;
-  const tHi = Number.isFinite(fT1) ? fT1 : tB;
-  const eLo = Number.isFinite(fE0) ? fE0 : Math.max(0, Math.floor(eA - padE));
-  const eHi = Number.isFinite(fE1) ? fE1 : Math.ceil(eB + padE);
-  const tSpan = Math.max(1, tHi - tLo);
-  const eSpan = Math.max(20, eHi - eLo);
-
-  const IW = W - PAD.left - PAD.right;
-  const IH = height - PAD.top - PAD.bottom;
-  const T = (t: number) => PAD.left + ((t - tLo) / tSpan) * IW;
-  const Y = (e: number) => PAD.top + (1 - (e - eLo) / eSpan) * IH;
-
-  const yticks: number[] = [];
-  for (let i = 0; i <= 5; i++) yticks.push(eLo + (eSpan * i) / 5);
-  const xticks: number[] = [];
-  for (let i = 0; i <= 5; i++) xticks.push(tLo + (tSpan * i) / 5);
-
-  const pathFor = (s: number) => {
-    const pts = bySeries[s].filter(inF).sort((a, b) => tsi(a.iso) - tsi(b.iso));
-    if (pts.length === 0) return null;
-    let d = `M ${T(tsi(pts[0].iso)).toFixed(1)} ${Y(pts[0].e).toFixed(1)}`;
-    let prevT: number | null = null;
-    let prevE: number | null = null;
-    for (const p of pts) {
-      const t = tsi(p.iso);
-      const e = p.e;
-      if (prevT != null && prevE != null && t - prevT > 86400000 * 2) {
-        d += ` L ${T(t).toFixed(1)} ${Y(prevE).toFixed(1)}`;
-      }
-      d += ` L ${T(t).toFixed(1)} ${Y(e).toFixed(1)}`;
-      prevT = t;
-      prevE = e;
+  const buildPath = (vals: (number | null)[]) => {
+    let d = "";
+    let started = false;
+    for (let i = 0; i < maxLen; i++) {
+      const v = i < vals.length ? vals[i] : null;
+      if (v == null) continue;
+      d += `${started ? " L" : "M"} ${T(i).toFixed(1)} ${Y(v).toFixed(1)}`;
+      started = true;
     }
     return d;
   };
+  const areaPath = (vals: (number | null)[]) => {
+    const line = buildPath(vals);
+    if (!line) return "";
+    let lastIdx = 0;
+    for (let i = 0; i < vals.length; i++) if (vals[i] != null) lastIdx = i;
+    return `${line} L ${T(lastIdx).toFixed(1)} ${Y(domain.eLo).toFixed(1)} L ${T(0).toFixed(1)} ${Y(domain.eLo).toFixed(1)} Z`;
+  };
 
-  // ----- interactivité -----
-  const hoverInfo = useMemo(() => {
-    if (hover == null) return null;
-    const xT = tLo + hover * tSpan;
-    // Point de référence : le point visible le plus proche de l'abscisse survolée.
-    let anchor: Pt | null = null;
-    let best = Number.POSITIVE_INFINITY;
-    for (const p of vis) {
-      const d = Math.abs(tsi(p.iso) - xT);
-      if (d < best) {
-        best = d;
-        anchor = p;
-      }
-    }
-    if (!anchor) return null;
-    const anchorT = tsi(anchor.iso);
-    const rows = series.map((s, idx) => {
-      const pts = bySeries[idx].filter(inF);
-      let near: Pt | null = null;
-      let b = Number.POSITIVE_INFINITY;
-      for (const p of pts) {
-        const d = Math.abs(tsi(p.iso) - anchorT);
-        if (d < b) {
-          b = d;
-          near = p;
+  const hoverPoint = useMemo(() => {
+    if (hoverIndex == null) return null;
+    let best: EloPoint | null = null;
+    let bestD = Infinity;
+    for (const s of series) {
+      for (const p of s.points) {
+        const d = Math.abs(p.index - hoverIndex);
+        if (d < bestD) {
+          bestD = d;
+          best = p;
         }
       }
-      return { label: s.label, color: s.color, elo: near ? near.e : null, iso: near?.iso ?? null };
-    });
-    return { anchorT, rows };
-  }, [hover, vis, bySeries, series, inF, tLo, tSpan]);
+    }
+    return best;
+  }, [hoverIndex, series]);
 
-  const xAnchor = hoverInfo ? T(hoverInfo.anchorT) : 0;
-
-  const onMove = (ev: React.MouseEvent<SVGSVGElement>) => {
-    const el = svgRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const rel = (ev.clientX - r.left) / r.width; // 0..1 en largeur écran
-    setHover(Math.min(1, Math.max(0, rel)));
+  const onMove = (ev: React.PointerEvent<SVGSVGElement>) => {
+    if (!hasData) return;
+    const rect = ev.currentTarget.getBoundingClientRect();
+    const x = ev.clientX - rect.left;
+    const idx = Math.round(((x - m.left) / IW) * (maxLen - 1));
+    setHoverIndex(Math.max(0, Math.min(maxLen - 1, idx)));
   };
+
+  const showXt = !compact && maxLen > 1;
+  const xTickIdx = showXt
+    ? Array.from(
+        new Set(
+          [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round((maxLen - 1) * f)),
+        ),
+      )
+        .filter((i) => i >= 0 && i < maxLen)
+        .sort((a, b) => a - b)
+    : [];
+
+  const hoverX = hoverPoint ? T(hoverPoint.index) : 0;
+
+  if (width > 0 && !hasData) {
+    return (
+      <div className="flex h-32 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-line text-center">
+        <p className="text-sm text-muted">Pas encore de parties.</p>
+        <p className="text-xs text-subtle">Joue et synchronise pour voir ta progression.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2">
-      {/* légende */}
-      <div className="flex flex-wrap gap-3">
-        {series.map((s) => (
-          <span key={s.label} className="inline-flex items-center gap-1.5 text-xs text-muted">
-            <span className="inline-block h-0.5 w-4 rounded-full" style={{ background: s.color }} />
-            {s.label}
-          </span>
-        ))}
-      </div>
-      <div className="relative">
+      {!compact && series.length > 1 && (
+        <div className="flex flex-wrap gap-3">
+          {series.map((s) => (
+            <span key={s.id} className="inline-flex items-center gap-1.5 text-xs text-muted">
+              <span className="inline-block h-2 w-2 rounded-full" style={{ background: s.color }} />
+              {s.label}
+            </span>
+          ))}
+        </div>
+      )}
+      <div ref={wrapRef} className="relative w-full">
         <svg
-          ref={svgRef}
-          viewBox={`0 0 ${W} ${height}`}
-          className="h-auto w-full"
+          width={W}
+          height={H}
+          className="w-full touch-pan-y select-none"
           role="img"
-          aria-label="Courbe Elo des parties analysées (survol pour le détail)"
-          onMouseMove={onMove}
-          onMouseLeave={() => setHover(null)}
+          aria-label="Progression Elo par partie"
+          onPointerMove={onMove}
+          onPointerLeave={() => setHoverIndex(null)}
+          onClick={() => {
+            if (onSelectPoint && hoverPoint) onSelectPoint(hoverPoint);
+          }}
         >
-          {/* grille + axes Y */}
-          {yticks.map((e) => (
+          {/* grille horizontale */}
+          {domain.ticks.map((e) => (
             <g key={`y${e}`}>
-              <line x1={PAD.left} x2={W - PAD.right} y1={Y(e)} y2={Y(e)} stroke="var(--chart-grid)" strokeDasharray="3 4" strokeWidth={1} />
-              <text x={PAD.left - 10} y={Y(e) + 4} fontSize={12} fill="var(--color-muted)" textAnchor="end" fontWeight="500">
-                {Math.round(e)}
-              </text>
-            </g>
-          ))}
-          {/* axe X + dates */}
-          {xticks.map((t) => (
-            <g key={`x${t}`}>
-              <line x1={T(t)} x2={T(t)} y1={PAD.top} y2={height - PAD.bottom} stroke="var(--chart-grid)" strokeDasharray="3 4" strokeWidth={1} />
-              <text x={T(t)} y={height - PAD.bottom + 18} fontSize={11} fill="var(--color-muted)" textAnchor="middle" fontWeight="500">
-                {labelX(t)}
-              </text>
-            </g>
-          ))}
-          {/* paliers */}
-          {milestones.map((m) =>
-            m >= eLo && m <= eHi ? (
-              <g key={`m${m}`}>
-                <line x1={PAD.left} x2={W - PAD.right} y1={Y(m)} y2={Y(m)} stroke="var(--chart-marker-border)" strokeDasharray="1 5" strokeWidth={1} opacity={0.5} />
-                <text x={PAD.left - 8} y={Y(m) + 3} fontSize={9} fill="var(--chart-label)" opacity={0.7} textAnchor="end">
-                  {m}
+              <line
+                x1={m.left}
+                x2={W - m.right}
+                y1={Y(e)}
+                y2={Y(e)}
+                stroke="var(--chart-grid)"
+                strokeDasharray="3 5"
+                strokeWidth={1}
+                opacity={compact ? 0.25 : 0.4}
+              />
+              {!compact && (
+                <text x={m.left - 8} y={Y(e) + 4} fontSize={11} fill="var(--color-muted)" textAnchor="end" className="tabular-nums">
+                  {e}
                 </text>
-              </g>
-            ) : null,
-          )}
-          <text x={10} y={PAD.top - 8} fontSize={11} fill="var(--chart-label)">Elo</text>
-          {/* courbes */}
-          {series.map((s, idx) => {
-            const d = pathFor(idx);
-            return d ? (
-              <path key={s.label} d={d} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-            ) : null;
-          })}
-          {/* crosshair + points au survol */}
-          {hoverInfo && (
+              )}
+            </g>
+          ))}
+
+          {/* objectif */}
+          {target != null && target >= domain.eLo && target <= domain.eHi && (
             <g>
               <line
-                x1={xAnchor}
-                x2={xAnchor}
-                y1={PAD.top}
-                y2={height - PAD.bottom}
-                stroke="var(--chart-crosshair)"
-                strokeWidth={1}
+                x1={m.left}
+                x2={W - m.right}
+                y1={Y(target)}
+                y2={Y(target)}
+                stroke="var(--color-accent)"
+                strokeDasharray="6 4"
+                strokeWidth={1.5}
+                opacity={0.8}
               />
-              {hoverInfo.rows.map((r) =>
-                r.elo != null ? (
-                  <circle key={r.label} cx={xAnchor} cy={Y(r.elo)} r={4} fill={r.color} stroke="var(--color-surface-2)" strokeWidth={1.5} />
-                ) : null,
+              {!compact && (
+                <text x={W - m.right} y={Y(target) - 4} fontSize={10} fill="var(--color-accent)" textAnchor="end">
+                  objectif {target}
+                </text>
               )}
             </g>
           )}
+          {/* objectif hors échelle : on le matérialise sans écraser la courbe */}
+          {target != null && target > domain.eHi && !compact && (
+            <text x={W - m.right} y={m.top - 4} fontSize={10} fill="var(--color-accent)" textAnchor="end">
+              objectif {target} ↑
+            </text>
+          )}
+          {target != null && target < domain.eLo && !compact && (
+            <text x={W - m.right} y={H - m.bottom - 4} fontSize={10} fill="var(--color-accent)" textAnchor="end">
+              objectif {target} ↓
+            </text>
+          )}
+
+          {/* x ticks */}
+          {xTickIdx.map((i) => (
+            <text key={`x${i}`} x={T(i)} y={H - m.bottom + 18} fontSize={11} fill="var(--color-muted)" textAnchor="middle" className="tabular-nums">
+              {i + 1}
+            </text>
+          ))}
+
+          {/* séries */}
+          {prepared.map((s) => {
+            const rawVals = s.points.map((p) => p.elo);
+            const mainVals = s.avg ?? rawVals;
+            const mainColor = s.color;
+            return (
+              <g key={s.id}>
+                {/* aire sous la ligne : uniquement en vue analyse mono-série */}
+                {!compact && series.length === 1 && (
+                  <path d={areaPath(mainVals)} fill={mainColor} fillOpacity={0.1} stroke="none" />
+                )}
+                {/* ligne brute (si lissé) */}
+                {s.avg && (
+                  <path d={buildPath(rawVals)} fill="none" stroke={mainColor} strokeWidth={1.2} opacity={0.5} strokeLinejoin="round" strokeLinecap="round" />
+                )}
+                {/* ligne principale */}
+                <path
+                  d={buildPath(mainVals)}
+                  fill="none"
+                  stroke={mainColor}
+                  strokeWidth={s.avg ? 2.6 : 2.2}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  strokeDasharray={s.dashed ? "6 5" : undefined}
+                />
+                {/* points bruts si peu denses */}
+                {s.points.length <= 40 &&
+                  s.points.map((p) => (
+                    <circle key={`${s.id}-${p.gameId}`} cx={T(p.index)} cy={Y(p.elo)} r={compact ? 2 : 2.4} fill={mainColor} opacity={s.avg ? 0.35 : 0.9} />
+                  ))}
+                {/* dernier point annoté */}
+                {s.points.length > 0 &&
+                  (() => {
+                    const last = s.points[s.points.length - 1];
+                    const lastVal = mainVals[mainVals.length - 1] ?? last.elo;
+                    return (
+                      <g>
+                        <circle cx={T(last.index)} cy={Y(lastVal)} r={3.6} fill={mainColor} stroke="var(--color-surface-2)" strokeWidth={1.5} />
+                        <text x={T(last.index)} y={Y(lastVal) - 8} fontSize={11} fontWeight={700} fill={mainColor} textAnchor="end">
+                          {Math.round(lastVal)}
+                        </text>
+                      </g>
+                    );
+                  })()}
+              </g>
+            );
+          })}
+
+          {/* crosshair */}
+          {hoverPoint && (
+            <line x1={hoverX} x2={hoverX} y1={m.top} y2={H - m.bottom} stroke="var(--chart-crosshair)" strokeWidth={1} opacity={0.6} />
+          )}
         </svg>
 
-        {/* tooltip flottant */}
-        {hoverInfo && (
+        {/* tooltip */}
+        {hoverPoint && (
           <div
-            className="pointer-events-none absolute z-10 min-w-40 rounded-lg border border-line bg-surface-2/95 px-3 py-2 text-xs shadow-lg backdrop-blur"
+            className="pointer-events-none absolute z-10 min-w-44 rounded-lg border border-line-strong bg-surface-2/95 px-3 py-2 text-xs shadow-lg backdrop-blur"
             style={{
-              left: `min(${(hover ?? 0) * 100}%, calc(100% - 1px))`,
-              transform: `translateX(${(hover ?? 1) >= 0.72 ? "-100%" : "0"})`,
-              top: 8,
+              left: hoverX,
+              transform: `translateX(${hoverX > W * 0.62 ? "-100%" : "8px"})`,
+              top: m.top,
             }}
           >
-            <p className="mb-1 font-medium text-ink">{labelFull(hoverInfo.anchorT)}</p>
+            <p className="mb-1 font-medium text-ink">
+              Partie {hoverPoint.gameNumber} · {fmtDate(hoverPoint.date)}
+            </p>
             <ul className="flex flex-col gap-1">
-              {hoverInfo.rows.map((r) => (
-                <li key={r.label} className="flex items-center justify-between gap-3">
-                  <span className="inline-flex items-center gap-1.5 text-muted">
-                    <span className="inline-block h-2 w-2 rounded-full" style={{ background: r.color }} />
-                    {r.label}
-                  </span>
-                  <b className="tabular-nums text-ink">{r.elo != null ? r.elo : "—"}</b>
-                </li>
-              ))}
+              {series.map((s) => {
+                const p = s.points.find((pt) => pt.index === hoverPoint.index) ??
+                  s.points.reduce<EloPoint | null>((acc, pt) => {
+                    if (!acc) return pt;
+                    return Math.abs(pt.index - hoverPoint.index) < Math.abs(acc.index - hoverPoint.index) ? pt : acc;
+                  }, null);
+                if (!p) return null;
+                return (
+                  <li key={s.id} className="flex flex-col gap-0.5">
+                    <span className="inline-flex items-center justify-between gap-3">
+                      <span className="inline-flex items-center gap-1.5 text-muted">
+                        <span className="inline-block h-2 w-2 rounded-full" style={{ background: s.color }} />
+                        {s.label}
+                      </span>
+                      <b className="tabular-nums text-ink">{p.elo}</b>
+                    </span>
+                    <span className="flex items-center justify-between gap-3 text-[11px] text-muted">
+                      <span className="truncate">
+                        {p.result === "W" ? "Victoire" : p.result === "D" ? "Nulle" : "Défaite"} vs {p.opponent}
+                      </span>
+                      {p.delta != null && (
+                        <span className={p.delta >= 0 ? "text-eval-up tabular-nums" : "text-eval-down tabular-nums"}>
+                          {p.delta >= 0 ? "+" : ""}
+                          {p.delta}
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
       </div>
-      {vis.length === 0 ? (
-        <p className="text-xs text-muted">Aucun point dans cette période / plage elo.</p>
-      ) : null}
+      {!compact && (
+        <p className="text-[11px] text-subtle">Axe = ordre des parties. Survole pour le détail ; clique pour ouvrir la partie.</p>
+      )}
     </div>
   );
 }

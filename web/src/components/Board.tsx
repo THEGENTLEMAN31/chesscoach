@@ -80,8 +80,8 @@ export function Board({
           onSquareClick={onSquareClick}
           customArrows={arrows}
           customSquareStyles={styles}
-          customLightSquareStyle={{ backgroundColor: "#ecece8" }}
-          customDarkSquareStyle={{ backgroundColor: "#c9c6bf" }}
+          customLightSquareStyle={{ backgroundColor: "var(--board-light)" }}
+          customDarkSquareStyle={{ backgroundColor: "var(--board-dark)" }}
           customDndBackend={isTouchDevice ? TouchBackend : HTML5Backend}
           customDndBackendOptions={isTouchDevice ? { enableMouseEvents: true } : undefined}
         />

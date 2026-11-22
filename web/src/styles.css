@@ -1,90 +1,56 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------ tokens UI
+   Source unique de vérité. Les couleurs sémantiques sont définies ici en
+   littéral (dark par défaut) puis surchargées pour le thème clair. Les
+   tokens bruts (--board-*, --eval-*, --chart-*) servent aux styles inline.
+   -------------------------------------------------------------------------- */
 @theme {
   --color-surface: #0b0e11;
   --color-surface-2: #12161a;
   --color-surface-3: #1a2025;
   --color-line: #20262c;
+  --color-line-strong: #2c343c;
   --color-ink: #e8ebee;
-  --color-muted: #a0aab4;
+  --color-muted: #a6afb9;
+  --color-subtle: #7c8792;
   --color-accent: #6fa8dc;
   --color-accent-ink: #0b0e11;
+  --color-accent-soft: #16283a;
+  --color-success: #4cc38a;
+  --color-warning: #e3b341;
+  --color-danger: #f06a6a;
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
-:root {
-  color-scheme: dark;
-  --chart-1: oklch(0.32 0 none);
-  --chart-2: oklch(0.41 0 none);
-  --chart-3: oklch(0.54 0 none);
-  --chart-4: oklch(0.71 0 none);
-  --chart-5: oklch(0.89 0 none);
-  --chart-background: oklch(1 0 0);
-  --chart-foreground: oklch(0.145 0.004 285);
-  --chart-foreground-muted: oklch(0.55 0.014 260);
-  --chart-line-primary: var(--chart-1);
-  --chart-line-secondary: var(--chart-2);
-  --chart-crosshair: oklch(0.4 0.1828 274.34);
-  --chart-grid: oklch(0.9 0 0);
-  --chart-brush-border: var(--chart-grid);
-  --chart-tooltip-background: oklch(0.21 0.006 285 / 0.8);
-  --chart-tooltip-foreground: oklch(0.985 0 0);
-  --chart-tooltip-muted: oklch(0.65 0.01 260);
-  --chart-marker-background: oklch(0.97 0.005 260);
-  --chart-marker-border: oklch(0.85 0.01 260);
-  --chart-marker-foreground: oklch(0.3 0.01 260);
-  --chart-label: oklch(0.45 0.01 260);
-  --chart-scale-01: oklch(0.98 0.003 106);
-  --chart-scale-02: oklch(0.92 0.008 106);
-  --chart-scale-03: oklch(0.82 0.015 106);
-  --chart-scale-04: oklch(0.68 0.02 106);
-  --chart-scale-05: oklch(0.55 0.025 106);
-  --chart-scale-pattern-color: oklch(0.96 0.005 106);
+[data-theme="light"] {
+  --color-surface: #f4f6f8;
+  --color-surface-2: #ffffff;
+  --color-surface-3: #edf1f5;
+  --color-line: #e1e6eb;
+  --color-line-strong: #c9d1d9;
+  --color-ink: #11161c;
+  --color-muted: #4e5964;
+  --color-subtle: #6b7682;
+  --color-accent: #2c6fa8;
+  --color-accent-ink: #ffffff;
+  --color-accent-soft: #e8f1f9;
+  --color-success: #1f7a4d;
+  --color-warning: #946200;
+  --color-danger: #b3261e;
 }
 
 html[data-theme="light"] {
   color-scheme: light;
 }
 
-[data-theme="light"] {
-  --color-surface: #f6f7f9;
-  --color-surface-2: #ffffff;
-  --color-surface-3: #edf0f3;
-  --color-line: #dde2e8;
-  --color-ink: #161b21;
-  --color-muted: #5b6570;
-  --color-accent: #2f6fae;
-  --color-accent-ink: #ffffff;
-}
-
-body {
-  background-color: var(--color-surface);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-
-::selection {
-  background-color: var(--color-accent);
-  color: var(--color-accent-ink);
-}
-
-:focus-visible {
-  outline: 2px solid var(--color-ring);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-:where(button, [role="button"], a, input, select, textarea, [tabindex]):focus:not(:focus-visible) {
-  outline: none;
-}
-
-@custom-variant dark (&:is([data-theme="dark"] *, html:not([data-theme]) *));
-
+/* ------------------------------------------------------------------ tokens bruts + shadcn + charts */
 :root {
+  color-scheme: dark;
   --radius: 0.75rem;
+
+  /* shadcn */
   --background: #0b0e11;
   --foreground: #e8ebee;
   --card: #12161a;
@@ -96,86 +62,129 @@ body {
   --secondary: #1a2025;
   --secondary-foreground: #e8ebee;
   --muted: #1a2025;
-  --muted-foreground: #a0aab4;
+  --muted-foreground: #a6afb9;
   --accent: #1a2025;
   --accent-foreground: #e8ebee;
-  --destructive: #d9534f;
-  --destructive-foreground: #ffffff;
+  --destructive: #f06a6a;
+  --destructive-foreground: #0b0e11;
   --border: #20262c;
   --input: #20262c;
   --ring: #6fa8dc;
+
+  /* échiquier + surlignages */
+  --board-light: #9aa7b2;
+  --board-dark: #5c6975;
+  --board-select: rgba(111, 168, 220, 0.45);
+  --board-select-ring: #6fa8dc;
+  --board-legal: rgba(12, 16, 20, 0.32);
+  --board-last: rgba(255, 196, 0, 0.34);
+  --board-last-ring: rgba(255, 196, 0, 0.8);
+  --board-best: rgba(76, 195, 138, 0.32);
+  --board-mistake: rgba(240, 106, 106, 0.32);
+  --eval-white: #eef1f4;
+  --eval-black: #2a323b;
+
+  /* évaluation des coups */
+  --eval-up: #4cc38a;
+  --eval-down: #f06a6a;
+
+/* charts */
   --chart-1: #6fa8dc;
-  --chart-2: #8f97a1;
-  --chart-3: #d9a441;
-  --chart-4: #3fb562;
-  --chart-5: #d9534f;
-  --eval-up: #3fb562;
-  --eval-down: #d9534f;
-  --chart-background: var(--card);
-  --chart-foreground: var(--foreground);
-  --chart-foreground-muted: var(--muted-foreground);
-  --chart-label: var(--muted-foreground);
+  --chart-2: #e0a73e;
+  --chart-3: #4cc38a;
+  --chart-4: #f06a6a;
+  --chart-5: #a6afb9;
+  --chart-background: #12161a;
+  --chart-foreground: #e8ebee;
+  --chart-foreground-muted: #a6afb9;
   --chart-line-primary: var(--chart-1);
   --chart-line-secondary: var(--chart-2);
-  --chart-crosshair: var(--border);
-  --chart-grid: var(--border);
-  --chart-indicator-color: var(--primary);
-  --chart-marker-background: var(--card);
-  --chart-marker-border: var(--border);
-  --chart-marker-foreground: var(--foreground);
-  --chart-marker-badge-background: var(--primary);
-  --chart-marker-badge-foreground: var(--primary-foreground);
-  --chart-segment-background: var(--muted);
-  --chart-segment-line: var(--border);
-  --chart-brush-border: var(--border);
-  --chart-tooltip-background: var(--popover);
+  --chart-crosshair: #ffffff;
+  --chart-grid: #6b7280;
+  --chart-brush-border: var(--chart-grid);
+  --chart-tooltip-background: #12161a;
+  --chart-tooltip-foreground: #e8ebee;
+  --chart-tooltip-muted: #a6afb9;
+  --chart-marker-background: #12161a;
+  --chart-marker-border: #6b7280;
+  --chart-marker-foreground: #e8ebee;
+  --chart-marker-badge-background: var(--chart-1);
+  --chart-marker-badge-foreground: #0b0e11;
+  --chart-label: #d1d5db;
+  --chart-segment-background: #1a2025;
+  --chart-segment-line: #374151;
+  --chart-indicator-color: var(--chart-1);
+  --chart-indicator-secondary-color: var(--chart-2);
+  --chart-scale-01: oklch(0.28 0.03 270);
+  --chart-scale-02: oklch(0.38 0.04 270);
+  --chart-scale-03: oklch(0.48 0.05 270);
+  --chart-scale-04: oklch(0.58 0.06 270);
+  --chart-scale-05: oklch(0.68 0.07 270);
+  --chart-scale-pattern-color: #0b0e11;
 }
 
 [data-theme="light"] {
-  --background: #f6f7f9;
-  --foreground: #161b21;
+  --background: #f4f6f8;
+  --foreground: #11161c;
   --card: #ffffff;
-  --card-foreground: #161b21;
+  --card-foreground: #11161c;
   --popover: #ffffff;
-  --popover-foreground: #161b21;
-  --primary: #2f6fae;
+  --popover-foreground: #11161c;
+  --primary: #2c6fa8;
   --primary-foreground: #ffffff;
-  --secondary: #edf0f3;
-  --secondary-foreground: #161b21;
-  --muted: #edf0f3;
-  --muted-foreground: #5b6570;
-  --accent: #edf0f3;
-  --accent-foreground: #161b21;
-  --destructive: #c0392b;
+  --secondary: #edf1f5;
+  --secondary-foreground: #11161c;
+  --muted: #edf1f5;
+  --muted-foreground: #4e5964;
+  --accent: #edf1f5;
+  --accent-foreground: #11161c;
+  --destructive: #b3261e;
   --destructive-foreground: #ffffff;
-  --border: #dde2e8;
-  --input: #dde2e8;
-  --ring: #2f6fae;
-  --chart-1: #2f6fae;
-  --chart-2: #5b6570;
-  --chart-3: #b8860b;
-  --chart-4: #278a45;
-  --chart-5: #c0392b;
-  --eval-up: #278a45;
-  --eval-down: #c0392b;
-  --chart-background: var(--card);
-  --chart-foreground: var(--foreground);
-  --chart-foreground-muted: var(--muted-foreground);
-  --chart-label: var(--muted-foreground);
+  --border: #e1e6eb;
+  --input: #e1e6eb;
+  --ring: #2c6fa8;
+
+  --board-light: #f0d9b5;
+  --board-dark: #b58863;
+  --board-select: rgba(44, 111, 168, 0.35);
+  --board-select-ring: #2c6fa8;
+  --board-legal: rgba(12, 16, 20, 0.22);
+  --board-last: rgba(255, 196, 0, 0.45);
+  --board-last-ring: rgba(196, 142, 0, 0.9);
+  --board-best: rgba(31, 122, 77, 0.25);
+  --board-mistake: rgba(179, 38, 30, 0.22);
+  --eval-white: #f7f8fa;
+  --eval-black: #2b3138;
+
+  --eval-up: #1f7a4d;
+  --eval-down: #b3261e;
+
+  --chart-1: #2c6fa8;
+  --chart-2: #b8860b;
+  --chart-3: #1f7a4d;
+  --chart-4: #b3261e;
+  --chart-5: #5b6570;
+  --chart-background: #ffffff;
+  --chart-foreground: #11161c;
+  --chart-foreground-muted: #4e5964;
   --chart-line-primary: var(--chart-1);
   --chart-line-secondary: var(--chart-2);
-  --chart-crosshair: var(--border);
-  --chart-grid: var(--border);
-  --chart-indicator-color: var(--primary);
-  --chart-marker-background: var(--card);
-  --chart-marker-border: var(--border);
-  --chart-marker-foreground: var(--foreground);
-  --chart-marker-badge-background: var(--primary);
-  --chart-marker-badge-foreground: var(--primary-foreground);
-  --chart-segment-background: var(--muted);
-  --chart-segment-line: var(--border);
-  --chart-brush-border: var(--border);
-  --chart-tooltip-background: var(--popover);
+  --chart-crosshair: #b9c2cc;
+  --chart-grid: #e3e8ee;
+  --chart-brush-border: var(--chart-grid);
+  --chart-tooltip-background: #ffffff;
+  --chart-tooltip-foreground: #11161c;
+  --chart-tooltip-muted: #4e5964;
+  --chart-marker-background: #ffffff;
+  --chart-marker-border: #c9d1d9;
+  --chart-marker-foreground: #11161c;
+  --chart-marker-badge-background: var(--chart-1);
+  --chart-marker-badge-foreground: #ffffff;
+  --chart-label: #4e5964;
+  --chart-segment-background: #edf1f5;
+  --chart-segment-line: #e1e6eb;
+  --chart-indicator-color: var(--chart-1);
+  --chart-indicator-secondary-color: var(--chart-2);
 }
 
 @theme inline {
@@ -189,7 +198,6 @@ body {
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted-foreground);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent-ui: var(--accent);
   --color-accent-ui-foreground: var(--accent-foreground);
@@ -198,6 +206,8 @@ body {
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-eval-up: var(--eval-up);
+  --color-eval-down: var(--eval-down);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -228,31 +238,46 @@ body {
   --color-chart-foreground-muted: var(--chart-foreground-muted);
   --color-chart-foreground: var(--chart-foreground);
   --color-chart-background: var(--chart-background);
-  --color-eval-up: var(--eval-up);
-  --color-eval-down: var(--eval-down);
 }
 
-[data-theme="dark"],
-html:not([data-theme]) {
-  --chart-1: oklch(1 0 none);
-  --chart-2: oklch(0.73 0 none);
-  --chart-3: oklch(0.51 0 none);
-  --chart-4: oklch(0.39 0 none);
-  --chart-5: oklch(0.32 0 none);
-  --chart-background: oklch(0.145 0 0);
-  --chart-foreground: oklch(0.45 0 0);
-  --chart-foreground-muted: oklch(0.65 0.01 260);
-  --chart-crosshair: oklch(0.45 0 0);
-  --chart-grid: oklch(0.25 0 0);
-  --chart-brush-border: var(--chart-grid);
-  --chart-marker-background: oklch(0.25 0.01 260);
-  --chart-marker-border: oklch(0.4 0.01 260);
-  --chart-marker-foreground: oklch(0.9 0 0);
-  --chart-label: oklch(0.75 0.01 260);
-  --chart-scale-01: oklch(0.28 0.03 270);
-  --chart-scale-02: oklch(0.38 0.04 270);
-  --chart-scale-03: oklch(0.48 0.05 270);
-  --chart-scale-04: oklch(0.58 0.06 270);
-  --chart-scale-05: oklch(0.68 0.07 270);
-  --chart-scale-pattern-color: oklch(0.145 0 0);
+@custom-variant dark (&:is([data-theme="dark"] *, html:not([data-theme]) *));
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background-color: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+:where(button, [role="button"], a, input, select, textarea, [tabindex]):focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* barre de défilement discrète */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

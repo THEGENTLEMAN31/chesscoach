@@ -6,6 +6,7 @@ import { useSession } from "./lib/session";
 import Dashboard from "./pages/Dashboard";
 import GameReview from "./pages/GameReview";
 import Games from "./pages/Games";
+import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import Progression from "./pages/Progression";
@@ -48,6 +49,8 @@ export default function App() {
   return (
     <ToastProvider>
       <Routes>
+        <Route path="/" element={<Landing />} />
+
         <Route element={<Public />}>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -55,7 +58,6 @@ export default function App() {
 
         <Route element={<RequireAuth />}>
           <Route element={<Layout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/games" element={<Games />} />
             <Route path="/games/:id" element={<GameReview />} />

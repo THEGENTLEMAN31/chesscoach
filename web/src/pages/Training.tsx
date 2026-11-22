@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import type { Arrow } from "react-chessboard/dist/chessboard/types";
 import { Chess, type Square } from "chess.js";
 import { Board } from "../components/Board";
@@ -24,11 +24,10 @@ import { ChevronRightIcon } from "../components/icons";
 type PendingPromo = { from: Square; to: Square } | null;
 
 export default function Training() {
-  const [searchParams] = useSearchParams();
   const { user } = useSession();
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [concept, setConcept] = useState(searchParams.get("concept") ?? "");
+  const [concept, setConcept] = useState<string>("");
   const [timeClass, setTimeClass] = useState("");
   const [gravity, setGravity] = useState("blunder");
   const [idx, setIdx] = useState(0);
@@ -67,15 +66,25 @@ export default function Training() {
   useEffect(() => {
     api
       .profile("global")
-      .then((p) => setProfile(p as unknown as PlayerProfile))
+      .then((p) => {
+        const prof = p as unknown as PlayerProfile;
+        setProfile(prof);
+        const firstConcept = prof?.concepts_missing?.[0]?.key ?? "";
+        if (firstConcept) {
+          setConcept(firstConcept);
+        }
+      })
       .catch(() => {});
     api
       .etudeStats()
       .then((s) => setEtudes(s))
       .catch(() => {});
-    loadExercises(searchParams.get("concept") ?? "", "", "blunder");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (concept === undefined) return;
+    loadExercises(concept, timeClass, gravity);
+  }, [concept, timeClass, gravity]);
 
   const exercise = exercises[idx] ?? null;
 
@@ -97,7 +106,6 @@ export default function Training() {
   const isCorrect = revealed && proposed === exercise?.best_move_uci;
   const bestMoveUci = exercise?.best_move_uci ?? null;
 
-  // Pastille de couleur sur le carré du coup joué (vert si correct, rouge sinon)
   const userMoveStyle = useMemo(() => {
     const style: CustomSquareStyles = {};
     if (revealed && proposed && exercise) {
@@ -112,7 +120,6 @@ export default function Training() {
     return style;
   }, [revealed, proposed, exercise, isCorrect]);
 
-  // Flèche montrant le coup de référence : réponse adverse si disponible, sinon meilleur coup
   const refMoveArrows = useMemo(() => {
     const arr: Arrow[] = [];
     if (revealed && exercise) {
@@ -120,7 +127,7 @@ export default function Training() {
       if (refMove) {
         const from = refMove.slice(0, 2) as Square;
         const to = refMove.slice(2, 4) as Square;
-        const color = opponentReply ? "#3b82f6" : "#10b981";
+        const color = opponentReply ? "var(--color-accent)" : "var(--color-success)";
         arr.push([from as Arrow[0], to as Arrow[1], color]);
       }
     }
@@ -244,10 +251,9 @@ export default function Training() {
   const restart = () => setScore({ correct: 0, total: 0 });
 
   const conceptKeys = (profile?.concepts_missing || []).map((c) => c.key);
-  const options = concept ? [concept] : conceptKeys;
   const colorLabel = exercise?.color === "w" ? "les Blancs" : "les Noirs";
 
-const arrows = refMoveArrows;
+  const arrows = refMoveArrows;
 
   const stmLabel = exercise
     ? sideToMove(exercise.fen_before) === "w"
@@ -269,20 +275,6 @@ const arrows = refMoveArrows;
     .filter(Boolean)
     .join(" · ");
 
-  const missingKeys = new Set((profile?.concepts_missing ?? []).map((c) => c.key));
-  const landingThemes = [...CONCEPT_LIST].sort((a, b) => {
-    const ma = missingKeys.has(a) ? 0 : 1;
-    const mb = missingKeys.has(b) ? 0 : 1;
-    return ma - mb;
-  });
-  const showThemeLanding = !concept && exercises.length === 0 && !err;
-
-  const themeChip = (active: boolean) =>
-    `rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-      active
-        ? "border-accent bg-accent text-accent-ink"
-        : "border-line text-muted hover:border-surface-3 hover:text-ink"
-    }`;
 
   return (
     <div className="flex flex-col gap-4">
@@ -415,95 +407,22 @@ const arrows = refMoveArrows;
         </div>
       )}
 
-      {showThemeLanding ? (
-        <Card>
-          <div>
-            <h2 className="text-sm font-semibold tracking-tight">Choisis un thème</h2>
-            <p className="mt-0.5 text-xs text-muted">
-              Tes exercices sont tirés de tes propres parties (gaffes, erreurs,
-              imprécisions). Commence par un thème « à travailler ».
-            </p>
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            <button
-              onClick={() => {
-                setConcept("");
-                loadExercises("", timeClass, gravity);
-              }}
-              className={themeChip(false)}
-            >
-              Toutes les positions
-            </button>
-            {landingThemes.map((k) => (
-              <button
-                key={k}
-                onClick={() => {
-                  setConcept(k);
-                  loadExercises(k, timeClass, gravity);
-                }}
-                className={themeChip(false)}
-              >
-                {CONCEPT_LABEL[k]}
-                {missingKeys.has(k) && (
-                  <span className="ml-1.5 rounded bg-accent/15 px-1 py-px text-[10px] font-semibold text-accent">
-                    à travailler
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted">Cadence :</span>
-            {(
-              [
-                { value: "", label: "Toutes" },
-                { value: "rapid", label: "Rapide" },
-                { value: "blitz", label: "Blitz" },
-              ] as const
-            ).map((tc) => (
-              <button
-                key={tc.value}
-                onClick={() => setTimeClass(tc.value)}
-                className={themeChip(timeClass === tc.value)}
-              >
-                {tc.label}
-              </button>
-            ))}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted">Difficulté :</span>
-            {(
-              [
-                { value: "blunder", label: "Gaffes" },
-                { value: "blunder,mistake", label: "+ erreurs" },
-                { value: "blunder,mistake,inaccuracy", label: "+ imprécisions" },
-              ] as const
-            ).map((g) => (
-              <button
-                key={g.value}
-                onClick={() => setGravity(g.value)}
-                className={themeChip(gravity === g.value)}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
-        </Card>
-      ) : (
-        <>
-          <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3">
         <span className="text-sm text-muted">
-          <b className="text-ink tabular-nums">{score.correct}</b> /{" "}
-          <b className="text-ink tabular-nums">{score.total}</b> coups du moteur trouvés
+          {score.total === 0 && exercises.length > 0
+            ? `${exercises.length} position${exercises.length > 1 ? "s" : ""} aujourd'hui`
+            : score.total === 0
+              ? "Aucune position pour l'instant"
+              : `<b className="text-ink tabular-nums">{score.correct}</b> / <b className="text-ink tabular-nums">{score.total}</b> coups du moteur trouvés`}
         </span>
-        <button
-          onClick={restart}
-          className="text-xs font-medium text-muted underline-offset-2 hover:text-ink hover:underline"
-        >
-          Réinitialiser le score
-        </button>
+        {score.total > 0 && (
+          <button
+            onClick={restart}
+            className="text-xs font-medium text-muted underline-offset-2 hover:text-ink hover:underline"
+          >
+            Réinitialiser le score
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
@@ -665,18 +584,18 @@ const arrows = refMoveArrows;
               ) : null}
 
               {!revealed ? (
-                <>
+                <div>
                   <h2 className="text-sm font-semibold tracking-tight">Trouve le coup</h2>
                   <p className="text-sm text-muted">
-                    {options.length > 1
-                      ? `Focalise-toi sur : ${options.map((k) => CONCEPT_LABEL[k]).join(", ")}`
-                      : `Focalise-toi sur : ${CONCEPT_LABEL[options[0]] ?? "tes concepts"}`}
+                    {exercise.concept
+                      ? CONCEPT_LABEL[exercise.concept] ?? exercise.concept
+                      : "Position clé"}
+                    · Aux {stmLabel}.{" "}
+                    {settings.clickToMove
+                      ? "Clique une pièce puis sa case d'arrivée."
+                      : "Déplace une pièce sur l'échiquier."}
                   </p>
-                  <p className="text-sm text-muted">
-                    Aux {stmLabel}. Clique une pièce puis sa case d'arrivée (ou
-                    glisse-la).
-                  </p>
-                </>
+                </div>
               ) : (
                 <div className="flex flex-col gap-1.5 text-sm">
                   <p
@@ -778,8 +697,6 @@ const arrows = refMoveArrows;
           ) : null}
         </Card>
       </div>
-        </>
-      )}
     </div>
   );
 }

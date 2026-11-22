@@ -7,3 +7,5 @@ node_modules/
 dist/
 .env
 *.tsbuildinfo
+# généré par scripts/vendor-engine.mjs (inutile, on charge stockfish.js directement)
+web/public/engine/worker.wasm
