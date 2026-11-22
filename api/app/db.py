@@ -15,7 +15,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -212,6 +212,22 @@ MIGRATIONS: dict[int, str] = {
         SELECT MAX(id) FROM digests GROUP BY username, period
     );
     CREATE UNIQUE INDEX IF NOT EXISTS uk_digests_user_period ON digests(username, period);
+    """,
+    9: """
+    -- Cartes de répétition espacée (SM-2 simplifié) par position étudiée.
+    CREATE TABLE IF NOT EXISTS study_cards (
+        username      TEXT NOT NULL,
+        game_id       INTEGER NOT NULL,
+        ply           INTEGER NOT NULL,
+        interval_days INTEGER NOT NULL DEFAULT 0,
+        ease          REAL NOT NULL DEFAULT 2.5,
+        reps          INTEGER NOT NULL DEFAULT 0,
+        lapses        INTEGER NOT NULL DEFAULT 0,
+        next_due_at   TEXT,
+        updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (username, game_id, ply)
+    );
+    CREATE INDEX IF NOT EXISTS idx_study_cards_due ON study_cards(username, next_due_at);
     """,
 }
 

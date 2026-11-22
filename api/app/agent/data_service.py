@@ -5,7 +5,11 @@ de l'agent (ou le digest nocturne) présentent ensuite.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import aiosqlite
+
+from . import recommend as rec
 
 
 async def get_game(db: aiosqlite.Connection, game_id: int) -> dict | None:
@@ -205,7 +209,8 @@ async def exercices(db: aiosqlite.Connection, username: str, limit: int = 6,
                   g.end_time, g.opening_name, g.eco, g.time_class,
                   COALESCE(s.correct_count,0) AS correct_count,
                   COALESCE(s.wrong_count,0) AS wrong_count,
-                  s.last_attempt AS last_attempt, s.last_correct AS last_correct
+                  s.last_attempt AS last_attempt, s.last_correct AS last_correct,
+                  sc.interval_days AS card_interval, sc.next_due_at AS card_due
            FROM plies p
            JOIN games g ON g.id=p.game_id
            LEFT JOIN (
@@ -217,9 +222,14 @@ async def exercices(db: aiosqlite.Connection, username: str, limit: int = 6,
                FROM studied_positions
                GROUP BY game_id, ply
            ) s ON s.game_id=p.game_id AND s.ply=p.ply
+           LEFT JOIN study_cards sc
+               ON sc.username=g.username AND sc.game_id=p.game_id AND sc.ply=p.ply
            WHERE g.username=? AND p.is_player=1
              AND p.classification IN (""" + ",".join("?" * len(classes)) + """)
-             AND p.best_move_uci IS NOT NULL"""
+             AND p.best_move_uci IS NOT NULL
+             AND p.is_book=0
+             AND COALESCE(p.winprob_loss,0) >= 12
+             AND NOT (p.phase='opening' AND p.move_number < 10)"""
     params: list = [username, *classes]
     if concept:
         q += " AND p.concept=?"
@@ -229,24 +239,63 @@ async def exercices(db: aiosqlite.Connection, username: str, limit: int = 6,
         params.append(time_class)
     rows = [dict(r) for r in await (await db.execute(q, params)).fetchall()]
 
-    for r in rows:
-        correct = r["correct_count"]
-        score = r["winprob_loss"] or 0
-        if r["last_attempt"]:
-            if r["last_correct"] is None or r["last_attempt"] > r["last_correct"]:
-                score += 150  # dernier essai raté → remonter pour retenter
-            else:
-                score -= 250  # dernier essai réussi → descendre
-        if correct >= 2:
-            score -= 200      # maîtrisé (réussi plusieurs fois) → tout en bas
-        elif correct >= 1:
-            score -= 80
-        r["_score"] = score
+    # Poids des concepts (part relative des erreurs récentes), pour prioriser
+    # les faiblesses réelles plutôt que la seule sévérité d'une position isolée.
+    cur = await db.execute(
+        """SELECT COALESCE(p.concept,'candidate') AS c, COUNT(*) AS n
+           FROM plies p JOIN games g ON g.id=p.game_id
+           WHERE g.username=? AND p.is_player=1
+             AND p.classification IN ('blunder','mistake')
+           GROUP BY c""",
+        (username,),
+    )
+    cw = rec.concept_weights({r["c"]: r["n"] for r in await cur.fetchall()})
 
-    rows.sort(key=lambda r: r["_score"], reverse=True)
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    for r in rows:
+        concept_key = r.get("concept") or "candidate"
+        w = cw.get(concept_key, 0.2)
+        end_ts = r.get("end_time") or 0
+        age_days = ((now.timestamp() - end_ts) / 86400.0) if end_ts else 365.0
+        due = rec.due_factor(
+            {"interval_days": r.get("card_interval"), "next_due_at": r.get("card_due")}, now
+        )
+        m = rec.mastery(r["correct_count"], r["wrong_count"])
+        r["_score"] = rec.score_candidate(
+            loss=r["winprob_loss"], concept_w=w, age_days=age_days, due=due, mastery_v=m
+        )
+        r["_tb"] = rec.tiebreak(today, r["game_id"], r["ply"])
+
+    rows.sort(key=lambda r: (-r["_score"], r["_tb"]))
+
+    if limit <= 1:
+        rows = rows[:1]
+    else:
+        selected: list[dict] = []
+        per_concept: dict[str, int] = {}
+        last_concept: str | None = None
+        for r in rows:
+            c = r.get("concept") or "candidate"
+            if per_concept.get(c, 0) >= 2 or c == last_concept:
+                continue
+            selected.append(r)
+            per_concept[c] = per_concept.get(c, 0) + 1
+            last_concept = c
+            if len(selected) >= limit:
+                break
+        if len(selected) < limit:
+            for r in rows:
+                if r in selected:
+                    continue
+                selected.append(r)
+                if len(selected) >= limit:
+                    break
+        rows = selected
+
     for r in rows:
         r.pop("_score", None)
-    rows = rows[:limit]
+        r.pop("_tb", None)
 
     # Multi-coups : pour chaque exercice, la suite de la partie (fen + san + meilleur coup)
     # sur 3 plis, pour pouvoir rejouer une SÉQUENCE et pas un seul coup.
@@ -360,7 +409,7 @@ async def etude_stats(db: aiosqlite.Connection, username: str,
 
 
 async def record_etude(db: aiosqlite.Connection, payload) -> int:
-    """Enregistre une tentative d'exercice (position étudiée)."""
+    """Enregistre une tentative et met à jour la carte de répétition espacée (SM-2)."""
     cur = await db.execute(
         """INSERT INTO studied_positions
            (username, time_class, game_id, ply, fen, san, best_move_uci,
@@ -369,6 +418,31 @@ async def record_etude(db: aiosqlite.Connection, payload) -> int:
         (payload.username, payload.time_class, payload.game_id, payload.ply,
          payload.fen, payload.san, payload.best_move_uci, payload.best_move_san,
          payload.concept, payload.attempt, 1 if payload.correct else 0))
+
+    if payload.game_id is not None and payload.ply is not None:
+        now = datetime.now(timezone.utc)
+        existing = await db.execute(
+            "SELECT interval_days, ease, reps, lapses FROM study_cards "
+            "WHERE username=? AND game_id=? AND ply=?",
+            (payload.username, payload.game_id, payload.ply),
+        )
+        card = await existing.fetchone()
+        upd = rec.sm2_update(dict(card) if card else None, bool(payload.correct), now)
+        await db.execute(
+            """INSERT INTO study_cards
+               (username, game_id, ply, interval_days, ease, reps, lapses, next_due_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?, datetime('now'))
+               ON CONFLICT(username, game_id, ply) DO UPDATE SET
+                 interval_days=excluded.interval_days,
+                 ease=excluded.ease,
+                 reps=excluded.reps,
+                 lapses=excluded.lapses,
+                 next_due_at=excluded.next_due_at,
+                 updated_at=datetime('now')""",
+            (payload.username, payload.game_id, payload.ply, upd["interval_days"],
+             upd["ease"], upd["reps"], upd["lapses"], upd["next_due_at"]),
+        )
+
     await db.commit()
     return cur.lastrowid
 

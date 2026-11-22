@@ -33,7 +33,7 @@ _INFO_RE = re.compile(
 class EngineConfig:
     path: str = "/usr/local/bin/stockfish"
     threads: int = 2
-    hash_mb: int = 512
+    hash_mb: int = 128
     startup_timeout: float = 20.0
     command_timeout: float = 30.0
 

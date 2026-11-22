@@ -67,12 +67,9 @@ export default function Training() {
     api
       .profile("global")
       .then((p) => {
-        const prof = p as unknown as PlayerProfile;
-        setProfile(prof);
-        const firstConcept = prof?.concepts_missing?.[0]?.key ?? "";
-        if (firstConcept) {
-          setConcept(firstConcept);
-        }
+        // On charge la série recommandée du jour (diversifiée par concept) sans
+        // verrouiller un seul thème ; l'utilisateur peut filtrer s'il le souhaite.
+        setProfile(p as unknown as PlayerProfile);
       })
       .catch(() => {});
     api

@@ -33,6 +33,7 @@ services:
     build: ./analyzer
     container_name: chesscoach-analyzer
     restart: unless-stopped
+    mem_limit: 512m
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request,json;print(json.load(urllib.request.urlopen('http://127.0.0.1:8002/health'))['status'])"]
       interval: 30s
