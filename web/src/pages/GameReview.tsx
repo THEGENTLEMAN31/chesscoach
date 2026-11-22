@@ -618,10 +618,17 @@ export default function GameReview() {
                     // Deux sources de vérité, deux conventions :
                     // - live (WASM) : score perspective du camp au trait -> convertir en Blancs.
                     // - éval stockée : déjà normalisée perspective Blancs.
+                    // En exploration (boardFen renseigné), l'éval stockée ne correspond
+                    // pas à la position affichée : on n'affiche que le live de CETTE position.
                     let cpWhite: number | null = null;
                     let mateWhite: number | null = null;
-                    if (live?.key === liveKey && live?.cp != null) {
-                      cpWhite = plyColor === "w" ? live.cp : -live.cp;
+                    if (boardFen !== null) {
+                      if (live?.key !== liveKey) {
+                        return <EvalBar cp={null} label="…" />;
+                      }
+                      cpWhite = live?.cp != null
+                        ? (plyColor === "w" ? live.cp : -live.cp)
+                        : null;
                     } else if (ply?.eval_after) {
                       cpWhite = ply.eval_after.cp;
                       mateWhite = ply.eval_after.mate;
