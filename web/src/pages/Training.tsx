@@ -410,7 +410,12 @@ export default function Training() {
             ? `${exercises.length} position${exercises.length > 1 ? "s" : ""} aujourd'hui`
             : score.total === 0
               ? "Aucune position pour l'instant"
-              : `<b className="text-ink tabular-nums">{score.correct}</b> / <b className="text-ink tabular-nums">{score.total}</b> coups du moteur trouvés`}
+              : (
+                <>
+                  <b className="text-ink tabular-nums">{score.correct}</b> /{" "}
+                  <b className="text-ink tabular-nums">{score.total}</b> coups du moteur trouvés
+                </>
+              )}
         </span>
         {score.total > 0 && (
           <button

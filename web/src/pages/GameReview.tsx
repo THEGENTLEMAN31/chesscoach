@@ -620,7 +620,7 @@ export default function GameReview() {
                     // - éval stockée : déjà normalisée perspective Blancs.
                     let cpWhite: number | null = null;
                     let mateWhite: number | null = null;
-                    if (live?.cp != null) {
+                    if (live?.key === liveKey && live?.cp != null) {
                       cpWhite = plyColor === "w" ? live.cp : -live.cp;
                     } else if (ply?.eval_after) {
                       cpWhite = ply.eval_after.cp;
