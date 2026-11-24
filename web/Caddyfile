@@ -8,6 +8,17 @@
         file_server
     }
 
+    # Service worker : JAMAIS mis en cache (sinon les mises à jour de l'app
+    # restent bloquées chez les clients et sur les CDN comme Cloudflare).
+    handle /sw.js {
+        header Cache-Control "no-store, must-revalidate"
+        file_server
+    }
+    handle /service-worker.js {
+        header Cache-Control "no-store, must-revalidate"
+        file_server
+    }
+
     # SPA : fallback index.html pour les routes de l'app.
     handle {
         @spa not file
@@ -28,6 +39,8 @@
     @static {
         path *.js *.css *.wasm *.woff2 *.svg *.webmanifest
         not path /engine/*
+        not path /sw.js
+        not path /service-worker.js
     }
     header @static Cache-Control "public, max-age=86400"
 }

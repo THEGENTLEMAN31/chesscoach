@@ -15,6 +15,7 @@ export default defineConfig({
     tailwindcss(),
 VitePWA({
       registerType: "autoUpdate",
+      filename: "service-worker.js",
       includeAssets: [
         "favicon.svg",
         "icon.svg",
