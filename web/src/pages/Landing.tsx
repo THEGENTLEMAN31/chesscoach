@@ -172,21 +172,21 @@ export default function Landing() {
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-medium text-muted">Ta partie</span>
                     <span className="rounded-md border border-danger/30 bg-danger/10 px-2 py-0.5 text-[11px] font-semibold text-danger">
-                      Gaffe · −7,3 pions
+                      Gaffe · −4,5 pions
                     </span>
                   </div>
                   <div className="mt-3 flex items-start justify-center gap-3">
                     <div className="w-[240px] shrink-0">
                       <MiniBoard
-                        fen="7k/1pp3p1/p1n4p/8/1q2Q3/5N1P/1PP2PP1/6K1 w - - 0 27"
+                        fen="6n1/1p2bkp1/5pp1/3P4/6P1/1P2B2r/3NqP2/Q1R3K1 w - - 0 26"
                         orientation="white"
-                        arrows={[["f3", "h4", "var(--color-danger)"]]}
+                        arrows={[["g1", "f1", "var(--color-danger)"]]}
                       />
                     </div>
-                    <EvalBar cp={-734} height={240} label="−7,3" />
+                    <EvalBar cp={-454} height={240} label="−4,5" />
                   </div>
                   <p className="mt-3 text-xs text-muted">
-                    Tu avais joué <b className="text-ink">Nh4</b> (gaffe, <b className="text-danger">−7,3 pions</b>). Le coup du moteur était <b className="text-accent">Qe8+</b>.
+                    Tu avais joué <b className="text-ink">Nf1</b> (gaffe, <b className="text-danger">−4,5 pions</b>). Le coup du moteur était <b className="text-accent">Rd4</b>.
                   </p>
                 </div>
                 <div className="rounded-2xl border border-accent/30 bg-accent-soft p-4">
@@ -199,15 +199,15 @@ export default function Landing() {
                   <div className="mt-3 flex items-start justify-center gap-3">
                     <div className="w-[240px] shrink-0">
                       <MiniBoard
-                        fen="7k/1pp3p1/p1n4p/8/1q2Q3/5N1P/1PP2PP1/6K1 w - - 0 27"
+                        fen="6n1/1p2bkp1/5pp1/3P4/6P1/1P2B2r/3NqP2/Q1R3K1 w - - 0 26"
                         orientation="white"
-                        arrows={[["e4", "e8", "var(--color-accent)"]]}
+                        arrows={[["a1", "d4", "var(--color-accent)"]]}
                       />
                     </div>
                     <EvalBar cp={0} height={240} label="0.0" />
                   </div>
                   <p className="mt-3 text-xs text-muted">
-                    Position réelle de ta partie (blitz, 27e coup). Trouve le coup du moteur : <b className="text-ink">Qe8+</b> plutôt que la gaffe <b className="text-danger">Nh4</b> (−7,3 pions).
+                    Position réelle de ta partie (blitz, 26e coup). Trouve le coup du moteur : <b className="text-ink">Rd4</b> plutôt que la gaffe <b className="text-danger">Nf1</b> (−4,5 pions).
                   </p>
                 </div>
               </div>
