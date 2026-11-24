@@ -15,7 +15,7 @@ function MiniBoard({
   orientation?: "white" | "black";
 }) {
   return (
-    <div className="w-full max-w-[280px] mx-auto">
+    <div className="max-w-[280px] mx-auto">
       <Board
         fen={fen}
         orientation={orientation}
