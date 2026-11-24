@@ -8,15 +8,17 @@ import type { Arrow } from "react-chessboard/dist/chessboard/types";
 function MiniBoard({
   fen,
   arrows,
+  orientation = "black",
 }: {
   fen: string;
   arrows?: Arrow[];
+  orientation?: "white" | "black";
 }) {
   return (
     <div className="w-full max-w-[280px] mx-auto">
       <Board
         fen={fen}
-        orientation="black"
+        orientation={orientation}
         draggable={false}
         arrows={arrows}
         className="aspect-square"
@@ -170,18 +172,19 @@ export default function Landing() {
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-medium text-muted">Ta partie</span>
                     <span className="rounded-md border border-danger/30 bg-danger/10 px-2 py-0.5 text-[11px] font-semibold text-danger">
-                      Gaffe · −20,8 % prob.
+                      Gaffe · −7,3 pions
                     </span>
                   </div>
                   <div className="mt-3 flex justify-center">
                     <MiniBoard
-                      fen="r3k2r/pp3ppp/2pbpn2/4n3/3B4/P1NP1B1P/1PP2PPq/R2QRK2 b kq - 7 16"
-                      arrows={[["g4", "f3", "var(--color-danger)"]]}
+                      fen="7k/1pp3p1/p1n4p/8/1q2Q3/5N1P/1PP2PP1/6K1 w - - 0 27"
+                      orientation="white"
+                      arrows={[["f3", "h4", "var(--color-danger)"]]}
                     />
                   </div>
-                  <EvalBar cp={-27} height={60} label="−0.27" />
+                  <EvalBar cp={-734} height={60} label="−7,3" />
                   <p className="mt-3 text-xs text-muted">
-                    Tu avais joué <b className="text-ink">Nxf3</b> (gaffe, <b className="text-danger">−0.27</b>). Le coup du moteur était <b className="text-accent">O-O-O</b>.
+                    Tu avais joué <b className="text-ink">Nh4</b> (gaffe, <b className="text-danger">−7,3 pions</b>). Le coup du moteur était <b className="text-accent">Qe8+</b>.
                   </p>
                 </div>
                 <div className="rounded-2xl border border-accent/30 bg-accent-soft p-4">
@@ -193,13 +196,14 @@ export default function Landing() {
                   </div>
                   <div className="mt-3 flex justify-center">
                     <MiniBoard
-                      fen="r3k2r/pp3ppp/2pbpn2/4n3/3B4/P1NP1B1P/1PP2PPq/R2QRK2 b kq - 7 16"
-                      arrows={[["e8", "g8", "var(--color-accent)"]]}
+                      fen="7k/1pp3p1/p1n4p/8/1q2Q3/5N1P/1PP2PP1/6K1 w - - 0 27"
+                      orientation="white"
+                      arrows={[["e4", "e8", "var(--color-accent)"]]}
                     />
                   </div>
-                  <EvalBar cp={27} height={60} label="+0.27" />
+                  <EvalBar cp={0} height={60} label="0.0" />
                   <p className="mt-3 text-xs text-muted">
-                    Position réelle de ta partie (blitz, 16e coup). Trouve le coup du moteur : <b className="text-ink">O-O-O</b> (avantage <b className="text-accent">+0.27</b>).
+                    Position réelle de ta partie (blitz, 27e coup). Trouve le coup du moteur : <b className="text-ink">Qe8+</b> plutôt que la gaffe <b className="text-danger">Nh4</b> (−7,3 pions).
                   </p>
                 </div>
               </div>
