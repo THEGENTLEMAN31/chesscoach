@@ -15,7 +15,7 @@ function MiniBoard({
   orientation?: "white" | "black";
 }) {
   return (
-    <div className="max-w-[280px] mx-auto">
+    <div className="w-full">
       <Board
         fen={fen}
         orientation={orientation}
@@ -175,13 +175,15 @@ export default function Landing() {
                       Gaffe · −7,3 pions
                     </span>
                   </div>
-                  <div className="mt-3 flex items-center gap-4">
-                    <MiniBoard
-                      fen="7k/1pp3p1/p1n4p/8/1q2Q3/5N1P/1PP2PP1/6K1 w - - 0 27"
-                      orientation="white"
-                      arrows={[["f3", "h4", "var(--color-danger)"]]}
-                    />
-                    <EvalBar cp={-734} height={60} label="−7,3" />
+                  <div className="mt-3 flex items-start justify-center gap-3">
+                    <div className="w-[240px] shrink-0">
+                      <MiniBoard
+                        fen="7k/1pp3p1/p1n4p/8/1q2Q3/5N1P/1PP2PP1/6K1 w - - 0 27"
+                        orientation="white"
+                        arrows={[["f3", "h4", "var(--color-danger)"]]}
+                      />
+                    </div>
+                    <EvalBar cp={-734} height={240} label="−7,3" />
                   </div>
                   <p className="mt-3 text-xs text-muted">
                     Tu avais joué <b className="text-ink">Nh4</b> (gaffe, <b className="text-danger">−7,3 pions</b>). Le coup du moteur était <b className="text-accent">Qe8+</b>.
@@ -194,13 +196,15 @@ export default function Landing() {
                       À toi de jouer
                     </span>
                   </div>
-                  <div className="mt-3 flex items-center gap-4">
-                    <MiniBoard
-                      fen="7k/1pp3p1/p1n4p/8/1q2Q3/5N1P/1PP2PP1/6K1 w - - 0 27"
-                      orientation="white"
-                      arrows={[["e4", "e8", "var(--color-accent)"]]}
-                    />
-                    <EvalBar cp={0} height={60} label="0.0" />
+                  <div className="mt-3 flex items-start justify-center gap-3">
+                    <div className="w-[240px] shrink-0">
+                      <MiniBoard
+                        fen="7k/1pp3p1/p1n4p/8/1q2Q3/5N1P/1PP2PP1/6K1 w - - 0 27"
+                        orientation="white"
+                        arrows={[["e4", "e8", "var(--color-accent)"]]}
+                      />
+                    </div>
+                    <EvalBar cp={0} height={240} label="0.0" />
                   </div>
                   <p className="mt-3 text-xs text-muted">
                     Position réelle de ta partie (blitz, 27e coup). Trouve le coup du moteur : <b className="text-ink">Qe8+</b> plutôt que la gaffe <b className="text-danger">Nh4</b> (−7,3 pions).
