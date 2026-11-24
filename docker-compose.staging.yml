@@ -1,0 +1,34 @@
+services:
+  api:
+    build: ./api
+    container_name: staging-chesscoach-api
+    restart: unless-stopped
+    environment:
+      - DB_PATH=/app/data_staging/chesscoach.db
+      - ANALYZER_URL=http://analyzer:8002
+      - JWT_SECRET=staging-secret-do-not-use-in-production
+      - SEED_ADMIN_PASSWORD=staging-secret-123
+      - SEED_ADMIN_EMAIL=admin@staging.chesscoach.io
+    ports:
+      - "127.0.0.1:8101:8001"
+    depends_on:
+      - analyzer
+    volumes:
+      - ./data_staging:/app/data_staging
+      - ./data/openings:/app/openings
+
+  analyzer:
+    build: ./analyzer
+    container_name: staging-chesscoach-analyzer
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8102:8002"
+    volumes:
+      - ./data_staging_cache:/app/cache
+
+  web:
+    build: ./web
+    container_name: staging-chesscoach-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8100:80"
