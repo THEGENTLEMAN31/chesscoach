@@ -15,7 +15,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 MIGRATIONS: dict[int, str] = {
     1: """
@@ -228,6 +228,18 @@ MIGRATIONS: dict[int, str] = {
         PRIMARY KEY (username, game_id, ply)
     );
     CREATE INDEX IF NOT EXISTS idx_study_cards_due ON study_cards(username, next_due_at);
+    """,
+    10: """
+    -- Qualité des positions d'exercice (unicité) : écart en cp entre le meilleur
+    -- coup et le 2e meilleur. Un écart faible = position ambiguë à éviter.
+    CREATE TABLE IF NOT EXISTS exercise_quality (
+        game_id     INTEGER NOT NULL,
+        ply         INTEGER NOT NULL,
+        gap_cp      REAL,
+        best2_uci   TEXT,
+        computed_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (game_id, ply)
+    );
     """,
 }
 

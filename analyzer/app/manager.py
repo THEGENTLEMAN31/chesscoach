@@ -37,9 +37,14 @@ class EngineManager:
         await asyncio.to_thread(self._engine.stop)
 
     async def analyze(self, fen: str, config: PositionConfig, priority: int = P1_BATCH) -> PositionResult:
-        cached = await asyncio.to_thread(self._cache.get, fen, config.depth)
-        if cached is not None:
-            return cached
+        # Le cache est indexé (fen, depth) et ne tient pas compte de multipv.
+        # Pour multipv>1 (unicité, variantes), on court-circuite le cache afin de
+        # ne pas resservir une analyse MultiPV=1 (une seule ligne).
+        use_cache = config.multipv <= 1
+        if use_cache:
+            cached = await asyncio.to_thread(self._cache.get, fen, config.depth)
+            if cached is not None:
+                return cached
         loop = asyncio.get_running_loop()
         fut: asyncio.Future = loop.create_future()
         item = (priority, self._seq, fen, config, fut)
@@ -54,7 +59,8 @@ class EngineManager:
                 result = await asyncio.to_thread(
                     self._engine.analyze, fen, config.depth, config.movetime, config.multipv
                 )
-                await asyncio.to_thread(self._cache.put, fen, config.depth, result)
+                if config.multipv <= 1:
+                    await asyncio.to_thread(self._cache.put, fen, config.depth, result)
                 fut.set_result(result)
             except asyncio.CancelledError:
                 fut.set_exception(RuntimeError("moteur arrêté"))

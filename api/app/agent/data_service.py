@@ -210,7 +210,8 @@ async def exercices(db: aiosqlite.Connection, username: str, limit: int = 6,
                   COALESCE(s.correct_count,0) AS correct_count,
                   COALESCE(s.wrong_count,0) AS wrong_count,
                   s.last_attempt AS last_attempt, s.last_correct AS last_correct,
-                  sc.interval_days AS card_interval, sc.next_due_at AS card_due
+                  sc.interval_days AS card_interval, sc.next_due_at AS card_due,
+                  eq.gap_cp AS quality_gap
            FROM plies p
            JOIN games g ON g.id=p.game_id
            LEFT JOIN (
@@ -224,6 +225,8 @@ async def exercices(db: aiosqlite.Connection, username: str, limit: int = 6,
            ) s ON s.game_id=p.game_id AND s.ply=p.ply
            LEFT JOIN study_cards sc
                ON sc.username=g.username AND sc.game_id=p.game_id AND sc.ply=p.ply
+           LEFT JOIN exercise_quality eq
+               ON eq.game_id=p.game_id AND eq.ply=p.ply
            WHERE g.username=? AND p.is_player=1
              AND p.classification IN (""" + ",".join("?" * len(classes)) + """)
              AND p.best_move_uci IS NOT NULL
@@ -238,6 +241,10 @@ async def exercices(db: aiosqlite.Connection, username: str, limit: int = 6,
         q += " AND g.time_class=?"
         params.append(time_class)
     rows = [dict(r) for r in await (await db.execute(q, params)).fetchall()]
+
+    # Unicité : on écarte les positions dont le 2e meilleur coup est trop proche
+    # (gap connu et < 40 cp = ambigu). Gap inconnu = fail-open (accepté).
+    rows = [r for r in rows if r.get("quality_gap") is None or r["quality_gap"] >= 40]
 
     # Poids des concepts (part relative des erreurs récentes), pour prioriser
     # les faiblesses réelles plutôt que la seule sévérité d'une position isolée.
