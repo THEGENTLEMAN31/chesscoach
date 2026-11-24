@@ -169,7 +169,7 @@ export default function Games() {
                           <div className="truncate text-sm font-medium">
                             {g.white} <span className="text-muted">vs</span> {g.black}
                           </div>
-                          <div className="mt-0.5 text-xs text-muted">
+                          <div className="mt-0.5 truncate text-xs text-muted" title={g.opening_name ?? undefined}>
                             {TIME_CLASS_LABEL[g.time_class] ?? g.time_class}
                             {g.white_elo || g.black_elo
                               ? ` · ${g.white_elo ?? "—"} vs ${g.black_elo ?? "—"}`

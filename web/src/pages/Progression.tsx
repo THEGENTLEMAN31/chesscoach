@@ -257,7 +257,7 @@ export default function Progression() {
 
       <Card>
         <h2 className="text-sm font-semibold tracking-tight">Historique des snapshots</h2>
-        {history && history.dates.length > 0 ? (
+        {history && history.dates.some((_, i) => history.elo[i] != null || (history.games[i] ?? 0) > 0) ? (
           <div className="mt-2 overflow-x-auto">
             <table className="w-full min-w-72 text-sm">
               <thead>
@@ -268,13 +268,17 @@ export default function Progression() {
                 </tr>
               </thead>
               <tbody>
-                {history.dates.slice(-15).map((d, i) => (
-                  <tr key={d + i} className="border-b border-line/50 last:border-0">
-                    <td className="py-2 pr-3 tabular-nums">{d}</td>
-                    <td className="py-2 pr-3 tabular-nums">{history.elo[i] ?? "—"}</td>
-                    <td className="py-2 tabular-nums">{history.games[i]}</td>
-                  </tr>
-                ))}
+                {history.dates
+                  .map((d, i) => ({ d, elo: history.elo[i], games: history.games[i] ?? 0 }))
+                  .filter((r) => r.elo != null || r.games > 0)
+                  .slice(-15)
+                  .map((r, k) => (
+                    <tr key={r.d + k} className="border-b border-line/50 last:border-0">
+                      <td className="py-2 pr-3 tabular-nums">{r.d}</td>
+                      <td className="py-2 pr-3 tabular-nums">{r.elo ?? "—"}</td>
+                      <td className="py-2 tabular-nums">{r.games}</td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
